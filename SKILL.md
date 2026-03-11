@@ -71,6 +71,36 @@ Connect to Xcode 26.3 on collins-pro via `xcrun mcpbridge` over SSH.
 |------|-------------|------------|
 | `XcodeListWindows` | **⭐ Call first** — get `tabIdentifier` for all tools | `listWindows()` |
 
+## Model Selection for Xcode Tasks
+
+Pick the cheapest model that can handle the job. iOS/macOS work ranges from trivial to architecturally complex.
+
+### Sonnet 4.6 / Codex 5.3 (default — use for most work)
+- File reads, glob, grep, ls — pure navigation
+- Single-file edits (fix a typo, rename a variable, add a property)
+- Running builds and reading build errors
+- Running tests and interpreting results
+- Screenshot → image analysis for simple UI checks
+- Documentation searches
+- Simulator interaction (tap, type, swipe) — just coordinates
+- Build log parsing, issue triage
+- Writing tests for existing code
+
+### Opus 4.6 / Codex 5.4 (escalate for hard problems)
+- Multi-file refactors (rename across 10+ files, move types between modules)
+- Architectural decisions (choosing patterns, designing protocols, module boundaries)
+- Debugging complex build failures (linker errors, module resolution, SPM dependency conflicts)
+- SwiftUI layout debugging (analyzing preview images + suggesting structural fixes)
+- Writing new features from scratch (new views, new data models, new networking layers)
+- Test infrastructure setup (custom XCTestCase subclasses, mock frameworks)
+- Performance analysis (interpreting Instruments traces, suggesting optimizations)
+- Diagnosing runtime crashes from simulator logs
+- Any task that requires understanding how 3+ files interact
+
+### Rule of thumb
+If the task is "read → edit one thing → build → verify" → **Sonnet/Codex-5.3**
+If the task is "understand the architecture → design a solution → change multiple files → debug" → **Opus/Codex-5.4**
+
 ## CRITICAL: Always Start With XcodeListWindows
 
 Every tool (except DocumentationSearch) requires a `tabIdentifier`. Get it from XcodeListWindows first:
