@@ -41,8 +41,8 @@ Xcode is running on `collins-pro` with the MCP proxy registered.
 ### Workflow
 1. Always call `XcodeListWindows` first to get a tab-identifier
 2. Use `BuildProject` to build, check `GetBuildLog` for errors
-3. Run `RunAllTests` after fixes, verify with `GetTestResults`
-4. Use `XcodeGetSwiftUIPreview` for visual auditing of UI changes
+3. Run `RunAllTests` after fixes, verify with `GetTestList`
+4. Use `RenderPreview` for visual auditing of UI changes
 
 ### Available tools
 All 20 Xcode MCP tools are available via the `xcode` MCP server.

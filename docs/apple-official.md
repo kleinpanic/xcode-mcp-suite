@@ -1,94 +1,104 @@
-# Giving External Agentic Coding Tools Access to Xcode
+# Apple Official Documentation
 
-> **Source:** https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode  
-> **Retrieved:** 2026-03-11  
-> **© Apple Inc.** All rights reserved. Reproduced here for local reference per fair use.
-
----
+> Source: https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode
+> Verified tool names from: https://gist.github.com/keith/d8aca9661002388650cf2fdc5eac9f3b
 
 ## Overview
 
-You can give permission for another agentic coding tool to modify your Xcode project and perform actions, such as building your app.
-
-First, let Xcode know in settings that you plan to use an external third-party agentic coding tool for development. Then configure the agentic coding tool to access Xcode capabilities through the MCP server that Xcode provides.
-
----
-
-## Update Intelligence Settings
-
-Open Xcode settings and navigate to the Intelligence section. Under **Model Context Protocol**, turn on the **Xcode Tools** toggle to allow external agentic coding tools to access Xcode.
+Xcode 26.3 exposes 20 MCP tools via `xcrun mcpbridge`, a STDIO bridge between
+MCP clients and Xcode's internal tool service. Enable in:
 
 **Xcode → Settings → Intelligence → Model Context Protocol → Xcode Tools: ON**
 
----
+## Setup
 
-## Configure the Agentic Coding Tool
-
-After enabling the Intelligence setting, configure your agentic coding tool to use the MCP server that Xcode provides. Use `xcrun mcpbridge` as the command that starts the MCP server.
-
-### Claude Code
-
+### Claude Code (on the Mac)
 ```bash
 claude mcp add --transport stdio xcode -- xcrun mcpbridge
 ```
 
-### Codex CLI
-
-```bash
-codex mcp add xcode -- xcrun mcpbridge
+### Codex (on the Mac)
+Add to `.codex/config.json`:
+```json
+{
+  "mcpServers": {
+    "xcode": { "command": "xcrun", "args": ["mcpbridge"] }
+  }
+}
 ```
 
-### Any MCP-compatible client
+### Remote (SSH)
+```bash
+# Use xcode-mcp-proxy
+npx @kleinpanic/xcode-mcp-proxy
+# Set XCODE_HOST=your-mac
+```
 
-Use stdio transport with the command: `xcrun mcpbridge`
+## Environment Variables
 
-The bridge provides all Xcode capabilities as MCP tools over a JSON-RPC stdio connection.
+| Variable | Description |
+|----------|-------------|
+| `MCP_XCODE_PID` | Target a specific Xcode process (auto-detected by default) |
+| `MCP_XCODE_SESSION_ID` | UUID for session persistence |
 
----
+## All 20 Tools (Verified Names)
 
-## Available Tools (20)
+### File Operations (9)
+| Tool | Description |
+|------|-------------|
+| `XcodeRead` | Read file from project (includes unsaved Xcode buffer changes) |
+| `XcodeWrite` | Create or overwrite files |
+| `XcodeUpdate` | str_replace-style edits (oldString → newString) |
+| `XcodeGlob` | Find files by glob pattern |
+| `XcodeGrep` | Search file contents (regex, with context lines) |
+| `XcodeLS` | List directory contents |
+| `XcodeMakeDir` | Create directories/groups |
+| `XcodeRM` | Remove files/directories |
+| `XcodeMV` | Move, rename, or copy files |
 
-Once configured, the following tools are available to your agent:
+### Build & Test (5)
+| Tool | Description |
+|------|-------------|
+| `BuildProject` | Build the active scheme [TCC] |
+| `GetBuildLog` | Fetch build log (filter by severity/glob/regex) |
+| `RunAllTests` | Run all tests [TCC] |
+| `RunSomeTests` | Run specific tests by identifier [TCC] |
+| `GetTestList` | List all available tests [TCC] |
 
-### Build & Test
-- **BuildProject** — Build the active scheme
-- **GetBuildLog** — Fetch build log entries (filter by severity)
-- **RunAllTests** — Run all tests in the active scheme
-- **GetTestResults** — Retrieve results from the most recent test run
-- **CleanBuildFolder** — Clean derived data
+### Diagnostics (2)
+| Tool | Description |
+|------|-------------|
+| `XcodeListNavigatorIssues` | All project errors/warnings from Issue Navigator |
+| `XcodeRefreshCodeIssuesInFile` | Live diagnostics for a specific file |
 
-### Files & Navigation
-- **XcodeListWindows** — List open Xcode windows and their tab-identifiers *(call first)*
-- **XcodeOpenFile** — Open a file in the Xcode editor
-- **XcodeNavigateToSymbol** — Jump to a named symbol
-- **XcodeGetFileContents** — Read file contents through Xcode's buffer (includes unsaved changes)
-- **XcodeRefreshCodeIssuesInFile** — Re-run diagnostics on a specific file
+### Code Execution (1)
+| Tool | Description |
+|------|-------------|
+| `ExecuteSnippet` | Run Swift code in project context (codeSnippet + sourceFilePath) [TCC] |
 
-### Diagnostics & Intelligence
-- **XcodeGetDiagnostics** — Get current diagnostics (errors, warnings) for the project or a file
-- **XcodeGetSymbolInfo** — Look up type, declaration, and documentation for a symbol
-- **XcodeSearchDocumentation** — Search Apple developer documentation
-- **XcodeGetCompletions** — Get code completions at a cursor position
-- **XcodeGetReferencesForSymbol** — Find all references to a symbol across the project
+### Preview (1)
+| Tool | Description |
+|------|-------------|
+| `RenderPreview` | Render SwiftUI preview as base64 PNG image [TCC] |
 
-### Swift REPL & Previews
-- **XcodeRunSwiftREPL** — Execute Swift code in the REPL
-- **XcodeGetSwiftUIPreview** — Render a SwiftUI preview (returns base64 PNG)
-- **XcodeRefreshSwiftUIPreview** — Refresh the preview for a file
+### Documentation (1)
+| Tool | Description |
+|------|-------------|
+| `DocumentationSearch` | Search Apple docs + WWDC transcripts (MLX semantic search) |
 
-### Simulator
-- **XcodeListSimulators** — List available simulators and their boot state
-- **XcodeRunOnSimulator** — Build and run the app on a simulator
+### Windowing (1)
+| Tool | Description |
+|------|-------------|
+| `XcodeListWindows` | List open Xcode windows — **call first** to get `tabIdentifier` |
 
----
+[TCC] = requires macOS Automation permission (TCC dialog on first use)
 
-## Important Notes
+## Key Parameter Names
 
-- **`XcodeListWindows` must be called first** to obtain a `tab-identifier`, which is required by all other tools.
-- Xcode must be running with at least one project/workspace open.
-- The Intelligence toggle must remain enabled for the MCP server to accept connections.
-- `xcrun mcpbridge` uses JSON-RPC 2.0 over stdio (MCP protocol version `2024-11-05`).
+These are non-obvious and differ from what you'd guess:
 
----
-
-*This is a local reference copy. For the most current information, see the [official Apple documentation](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode).*
+- `ExecuteSnippet`: `codeSnippet` (not `code`), `sourceFilePath` (REQUIRED)
+- `XcodeUpdate`: `oldString`/`newString` (not `oldText`/`newText`)
+- `XcodeMakeDir`: `directoryPath` (not `path`)
+- `XcodeMV`: `sourcePath`/`destinationPath` (not `from`/`to`)
+- `DocumentationSearch`: returns `documents[]` with `uri`/`contents`/`score`

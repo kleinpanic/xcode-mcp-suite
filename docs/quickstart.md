@@ -47,7 +47,7 @@ xcmcp repl --host collins-pro 'print("Hello from Xcode REPL!")'
 xcmcp screenshot --host collins-pro --mode simulator --out ui.png
 
 # Call any tool directly
-xcmcp call XcodeSearchDocumentation '{"query": "SwiftUI"}'
+xcmcp call DocumentationSearch '{"query": "SwiftUI"}'
 ```
 
 ## SDK Usage

@@ -11,13 +11,13 @@ import type {
   XcodeWindow,
   XcodeReadResult,
   XcodeWriteResult,
-  XcodeUpdateResult,
+  XcodeUpdateParams, XcodeUpdateResult,
   XcodeGlobResult,
   XcodeGrepResult,
   XcodeLSResult,
   XcodeMakeDirResult,
   XcodeRMResult,
-  XcodeMVResult,
+  XcodeMVParams, XcodeMVResult,
   BuildProjectResult,
   GetBuildLogResult,
   RunAllTestsResult,
@@ -25,9 +25,8 @@ import type {
   GetTestListResult,
   XcodeListNavigatorIssuesResult,
   XcodeRefreshCodeIssuesInFileResult,
-  ExecuteSnippetResult,
-  RenderPreviewResult,
-  DocumentationSearchParams,
+  ExecuteSnippetParams, ExecuteSnippetResult,
+  RenderPreviewParams, RenderPreviewResult,
   DocumentationSearchResult,
   XcodeListWindowsResult,
 } from "./types.js";
@@ -78,10 +77,9 @@ export class XcodeSession {
       const tabMatch = line.match(/tabIdentifier:\s*(\S+)/);
       const pathMatch = line.match(/workspacePath:\s*(\S+)/);
       if (tabMatch?.[1]) {
-        windows.push({
-          tabIdentifier: tabMatch[1],
-          workspacePath: pathMatch?.[1],
-        });
+        const win: XcodeWindow = { tabIdentifier: tabMatch[1] };
+        if (pathMatch?.[1]) win.workspacePath = pathMatch[1];
+        windows.push(win);
       }
     }
     return windows;
@@ -102,15 +100,17 @@ export class XcodeSession {
   }
 
   async updateFile(filePath: string, oldString: string, newString: string, replaceAll?: boolean): Promise<XcodeUpdateResult> {
-    return this.client.updateFile({ tabIdentifier: await this.tabId(), filePath, oldString, newString, replaceAll });
+    const params: XcodeUpdateParams = { tabIdentifier: await this.tabId(), filePath, oldString, newString };
+    if (replaceAll !== undefined) params.replaceAll = replaceAll;
+    return this.client.updateFile(params);
   }
 
   async glob(pattern: string): Promise<XcodeGlobResult> {
     return this.client.glob({ tabIdentifier: await this.tabId(), pattern });
   }
 
-  async grep(pattern: string, include?: string): Promise<XcodeGrepResult> {
-    return this.client.grep({ tabIdentifier: await this.tabId(), pattern, include });
+  async grep(pattern: string, opts?: { glob?: string; ignoreCase?: boolean; outputMode?: "content" | "filesWithMatches" | "count" }): Promise<XcodeGrepResult> {
+    return this.client.grep({ tabIdentifier: await this.tabId(), pattern, ...opts });
   }
 
   async ls(path: string): Promise<XcodeLSResult> {
@@ -126,7 +126,9 @@ export class XcodeSession {
   }
 
   async mv(sourcePath: string, destinationPath: string, operation?: "move" | "copy"): Promise<XcodeMVResult> {
-    return this.client.mv({ tabIdentifier: await this.tabId(), sourcePath, destinationPath, operation });
+    const params: XcodeMVParams = { tabIdentifier: await this.tabId(), sourcePath, destinationPath };
+    if (operation) params.operation = operation;
+    return this.client.mv(params);
   }
 
   // ── Build & Test ────────────────────────────────────────────────────────
@@ -164,13 +166,17 @@ export class XcodeSession {
   // ── Code Execution ──────────────────────────────────────────────────────
 
   async executeSnippet(codeSnippet: string, sourceFilePath: string, timeout?: number): Promise<ExecuteSnippetResult> {
-    return this.client.executeSnippet({ tabIdentifier: await this.tabId(), codeSnippet, sourceFilePath, timeout });
+    const params: ExecuteSnippetParams = { tabIdentifier: await this.tabId(), codeSnippet, sourceFilePath };
+    if (timeout !== undefined) params.timeout = timeout;
+    return this.client.executeSnippet(params);
   }
 
   // ── Preview ─────────────────────────────────────────────────────────────
 
   async renderPreview(filePath: string, previewName?: string): Promise<RenderPreviewResult> {
-    return this.client.renderPreview({ tabIdentifier: await this.tabId(), filePath, previewName });
+    const params: RenderPreviewParams = { tabIdentifier: await this.tabId(), filePath };
+    if (previewName) params.previewName = previewName;
+    return this.client.renderPreview(params);
   }
 
   // ── Documentation (no tabIdentifier needed) ─────────────────────────────

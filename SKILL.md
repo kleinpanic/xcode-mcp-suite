@@ -28,7 +28,7 @@ Connect to Xcode 26.3 on collins-pro via `xcrun mcpbridge` over SSH.
 |------|-------------|------------|
 | `XcodeRead` | Read file from project (includes unsaved buffer) | `readFile(path)` |
 | `XcodeWrite` | Write full file content (create/overwrite) | `writeFile(path, content)` |
-| `XcodeUpdate` | str_replace patch (oldText → newText) | `updateFile(path, old, new)` |
+| `XcodeUpdate` | str_replace patch (oldString → newString) | `updateFile(path, old, new)` |
 | `XcodeGlob` | Find files by glob pattern (`**/*.swift`) | `glob(pattern)` |
 | `XcodeGrep` | Search file contents | `grep(pattern)` |
 | `XcodeLS` | List directory contents | `ls(path)` |
@@ -118,7 +118,7 @@ Then pass `tabIdentifier: "windowtab1"` to every subsequent call.
 1. XcodeListWindows                          # get tabIdentifier
 2. XcodeGlob { pattern: "**/*.swift" }       # discover project files
 3. XcodeRead { filePath: "..." }             # read source code
-4. XcodeUpdate { filePath, oldText, newText } # edit with str_replace
+4. XcodeUpdate { filePath, oldString, newString } # edit with str_replace
 5. BuildProject { tabIdentifier }            # build → check errors
 6. GetBuildLog { severity: "error" }         # see what's broken
 7. XcodeListNavigatorIssues                  # all project issues
