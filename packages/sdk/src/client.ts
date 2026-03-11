@@ -31,7 +31,7 @@ import {
   type XcodeMakeDirParams, type XcodeMakeDirResult,
   type XcodeRMParams, type XcodeRMResult,
   type XcodeMVParams, type XcodeMVResult,
-  type BuildProjectParams, type BuildProjectResult,
+  type BuildProjectParams, type BuildProjectResult, type BuildError,
   type GetBuildLogParams, type GetBuildLogResult,
   type RunAllTestsParams, type RunAllTestsResult,
   type RunSomeTestsParams, type RunSomeTestsResult,
@@ -255,10 +255,11 @@ export class XcodeClient extends EventEmitter {
   /** Build the active project. Throws XcodeBuildError on failure. */
   async buildProject(params: BuildProjectParams): Promise<BuildProjectResult> {
     const result = await this.callTool<BuildProjectResult>("BuildProject", params as unknown as Record<string, unknown>);
-    if (result.errors?.length > 0) {
+    const errors = result.errors?.filter((e: BuildError) => e.classification === "error") ?? [];
+    if (errors.length > 0) {
       throw new XcodeBuildError(
-        `Build failed with ${result.errors.length} error(s)`,
-        result.errors,
+        `Build failed with ${errors.length} error(s)`,
+        errors,
       );
     }
     return result;

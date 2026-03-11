@@ -101,8 +101,8 @@ export class XcodeSession {
     return this.client.writeFile({ tabIdentifier: await this.tabId(), filePath, content });
   }
 
-  async updateFile(filePath: string, oldText: string, newText: string): Promise<XcodeUpdateResult> {
-    return this.client.updateFile({ tabIdentifier: await this.tabId(), filePath, oldText, newText });
+  async updateFile(filePath: string, oldString: string, newString: string, replaceAll?: boolean): Promise<XcodeUpdateResult> {
+    return this.client.updateFile({ tabIdentifier: await this.tabId(), filePath, oldString, newString, replaceAll });
   }
 
   async glob(pattern: string): Promise<XcodeGlobResult> {
@@ -117,38 +117,38 @@ export class XcodeSession {
     return this.client.ls({ tabIdentifier: await this.tabId(), path });
   }
 
-  async mkdir(path: string): Promise<XcodeMakeDirResult> {
-    return this.client.mkdir({ tabIdentifier: await this.tabId(), path });
+  async mkdir(directoryPath: string): Promise<XcodeMakeDirResult> {
+    return this.client.mkdir({ tabIdentifier: await this.tabId(), directoryPath });
   }
 
   async rm(path: string): Promise<XcodeRMResult> {
     return this.client.rm({ tabIdentifier: await this.tabId(), path });
   }
 
-  async mv(from: string, to: string): Promise<XcodeMVResult> {
-    return this.client.mv({ tabIdentifier: await this.tabId(), from, to });
+  async mv(sourcePath: string, destinationPath: string, operation?: "move" | "copy"): Promise<XcodeMVResult> {
+    return this.client.mv({ tabIdentifier: await this.tabId(), sourcePath, destinationPath, operation });
   }
 
   // ── Build & Test ────────────────────────────────────────────────────────
 
-  async buildProject(params: { scheme?: string; configuration?: string } = {}): Promise<BuildProjectResult> {
-    return this.client.buildProject({ ...params, tabIdentifier: await this.tabId() });
+  async buildProject(): Promise<BuildProjectResult> {
+    return this.client.buildProject({ tabIdentifier: await this.tabId() });
   }
 
-  async getBuildLog(params: { severity?: "error" | "warning" | "all" } = {}): Promise<GetBuildLogResult> {
+  async getBuildLog(params: { severity?: "error" | "warning" | "remark"; glob?: string; pattern?: string } = {}): Promise<GetBuildLogResult> {
     return this.client.getBuildLog({ ...params, tabIdentifier: await this.tabId() });
   }
 
-  async runAllTests(params: { scheme?: string } = {}): Promise<RunAllTestsResult> {
-    return this.client.runAllTests({ ...params, tabIdentifier: await this.tabId() });
+  async runAllTests(): Promise<RunAllTestsResult> {
+    return this.client.runAllTests({ tabIdentifier: await this.tabId() });
   }
 
-  async runSomeTests(tests: string[], scheme?: string): Promise<RunSomeTestsResult> {
-    return this.client.runSomeTests({ tests, scheme, tabIdentifier: await this.tabId() });
+  async runSomeTests(tests: string[]): Promise<RunSomeTestsResult> {
+    return this.client.runSomeTests({ tests, tabIdentifier: await this.tabId() });
   }
 
-  async getTestList(scheme?: string): Promise<GetTestListResult> {
-    return this.client.getTestList({ tabIdentifier: await this.tabId(), scheme });
+  async getTestList(): Promise<GetTestListResult> {
+    return this.client.getTestList({ tabIdentifier: await this.tabId() });
   }
 
   // ── Diagnostics ─────────────────────────────────────────────────────────
@@ -163,8 +163,8 @@ export class XcodeSession {
 
   // ── Code Execution ──────────────────────────────────────────────────────
 
-  async executeSnippet(code: string, timeout?: number): Promise<ExecuteSnippetResult> {
-    return this.client.executeSnippet({ tabIdentifier: await this.tabId(), code, timeout });
+  async executeSnippet(codeSnippet: string, sourceFilePath: string, timeout?: number): Promise<ExecuteSnippetResult> {
+    return this.client.executeSnippet({ tabIdentifier: await this.tabId(), codeSnippet, sourceFilePath, timeout });
   }
 
   // ── Preview ─────────────────────────────────────────────────────────────

@@ -14,17 +14,17 @@ export type {
   XcodeWriteParams, XcodeWriteResult,
   XcodeUpdateParams, XcodeUpdateResult,
   XcodeGlobParams, XcodeGlobResult,
-  XcodeGrepParams, XcodeGrepResult, GrepMatch,
-  XcodeLSParams, XcodeLSResult, DirectoryEntry,
+  XcodeGrepParams, XcodeGrepResult,
+  XcodeLSParams, XcodeLSResult,
   XcodeMakeDirParams, XcodeMakeDirResult,
   XcodeRMParams, XcodeRMResult,
   XcodeMVParams, XcodeMVResult,
   // Build & test
-  BuildProjectParams, BuildProjectResult, BuildIssue,
-  GetBuildLogParams, GetBuildLogResult,
-  RunAllTestsParams, RunAllTestsResult, TestFailure,
+  BuildProjectParams, BuildProjectResult, BuildError,
+  GetBuildLogParams, GetBuildLogResult, BuildLogEntry, BuildLogIssue,
+  RunAllTestsParams, RunAllTestsResult, TestCounts, TestResult,
   RunSomeTestsParams, RunSomeTestsResult,
-  GetTestListParams, GetTestListResult, TestEntry,
+  GetTestListParams, GetTestListResult, TestListEntry,
   // Diagnostics
   XcodeListNavigatorIssuesParams, XcodeListNavigatorIssuesResult, NavigatorIssue,
   XcodeRefreshCodeIssuesInFileParams, XcodeRefreshCodeIssuesInFileResult,
@@ -33,7 +33,7 @@ export type {
   // Preview
   RenderPreviewParams, RenderPreviewResult,
   // Documentation
-  DocumentationSearchParams, DocumentationSearchResult, DocumentationEntry,
+  DocumentationSearchParams, DocumentationSearchResult, DocumentationDocument,
   // Windowing
   XcodeListWindowsResult, XcodeWindow,
 } from "./types.js";

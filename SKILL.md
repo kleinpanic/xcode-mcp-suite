@@ -109,7 +109,7 @@ await withXcodeSession({ host: "collins-pro" }, async (s) => {
   // File operations
   const files = await s.glob("**/*.swift");
   const source = await s.readFile("Sources/App.swift");
-  await s.updateFile("Sources/App.swift", "old code", "new code");
+  await s.updateFile("Sources/App.swift", "old code", "new code"); // oldString, newString
 
   // Build & test
   const build = await s.buildProject();
@@ -120,8 +120,8 @@ await withXcodeSession({ host: "collins-pro" }, async (s) => {
   const issues = await s.listNavigatorIssues();
   const fileIssues = await s.refreshCodeIssuesInFile("Sources/App.swift");
 
-  // Execute Swift
-  const result = await s.executeSnippet('print([1,2,3].map { $0 * 2 })');
+  // Execute Swift (requires source file context)
+  const result = await s.executeSnippet('print([1,2,3].map { $0 * 2 })', 'Sources/App.swift');
 
   // Preview → base64 PNG
   const preview = await s.renderPreview("Sources/Views/ContentView.swift");
@@ -217,6 +217,35 @@ physically click "Allow" on the Mac.
 | Build/Test/Preview hangs forever | TCC dialog not accepted — physically click "Allow" on Mac |
 | "claude-code" not in Automation list | CLI tools lack bundle IDs; TCC may not persist. Re-accept on each CLI version update |
 | Permission dialog reappears | Known macOS limitation with CLI tools — accept again |
+
+## IMPORTANT: Correct Parameter Names (from Apple's API)
+
+Some parameters have non-obvious names. These are verified against the actual `tools/list` output:
+
+| Tool | Parameter | Correct name | WRONG guesses |
+|------|-----------|-------------|---------------|
+| `XcodeUpdate` | old text | `oldString` | ~~oldText~~ |
+| `XcodeUpdate` | new text | `newString` | ~~newText~~ |
+| `ExecuteSnippet` | code | `codeSnippet` | ~~code~~ |
+| `ExecuteSnippet` | file context | `sourceFilePath` (REQUIRED) | ~~filePath~~ |
+| `XcodeMakeDir` | path | `directoryPath` | ~~path~~ |
+| `XcodeMV` | source | `sourcePath` | ~~from~~ |
+| `XcodeMV` | destination | `destinationPath` | ~~to~~ |
+| `DocumentationSearch` | results | `documents[]` | ~~results[]~~ |
+| `DocumentationSearch` | url field | `uri` | ~~url~~ |
+
+Full verified schemas: `~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/schemas/tools-list-rc1.json`
+
+## Known Issues
+
+### mcpbridge v24582 (Xcode 26.3 build 17C529) — stdio bug
+**Status:** Confirmed. mcpbridge only responds to `initialize`, then ignores ALL subsequent messages (tools/list, tools/call).
+**Affects:** Both SSH and local connections on collins-pro.
+**Workaround:** Use Claude Code or Codex directly on collins-pro (they work through the MCP SDK). The SSH proxy approach doesn't work until Apple fixes mcpbridge.
+**Tested:** Node.js spawn, Python subprocess, bash pipe — all only get 1 response.
+
+### XcodeBuildMCP alternative
+For simulator management, debugging, and additional features not in Apple's 20 tools, see [XcodeBuildMCP](https://github.com/nicklama/xcode-mcp-server) — a third-party MCP server that wraps `xcodebuild` directly (no mcpbridge dependency).
 
 ## Reference
 

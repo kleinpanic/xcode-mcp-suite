@@ -163,7 +163,7 @@ describe("XcodeClient", () => {
         simulateResponse(msg.id, {
           structuredContent: {
             buildResult: "Build failed",
-            errors: [{ message: "Use of undeclared type 'Foo'", severity: "error", file: "main.swift", line: 10 }],
+            errors: [{ classification: "error", message: "Use of undeclared type 'Foo'", filePath: "main.swift", lineNumber: 10 }],
           },
         });
       }
@@ -176,7 +176,31 @@ describe("XcodeClient", () => {
     client.disconnect();
   });
 
-  it("callTool sends correct MCP tool call", async () => {
+  it("does NOT throw XcodeBuildError for warnings only", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "BuildProject") {
+        simulateResponse(msg.id, {
+          structuredContent: {
+            buildResult: "Build succeeded",
+            errors: [{ classification: "warning", message: "Unused variable", filePath: "main.swift", lineNumber: 5 }],
+          },
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.buildProject({ tabIdentifier: "tab1" });
+    expect(result.buildResult).toBe("Build succeeded");
+    expect(result.errors).toHaveLength(1);
+    client.disconnect();
+  });
+
+  it("executeSnippet uses codeSnippet/sourceFilePath params", async () => {
     const client = new XcodeClient({ timeout: 500 });
 
     mockStdin.write.mockImplementation((line: string) => {
@@ -184,15 +208,79 @@ describe("XcodeClient", () => {
       if (msg.method === "initialize") simulateResponse(msg.id, {});
       if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
       if (msg.method === "tools/call" && msg.params?.name === "ExecuteSnippet") {
+        // Verify correct param names
+        const args = msg.params?.arguments;
+        expect(args.codeSnippet).toBe("print(42)");
+        expect(args.sourceFilePath).toBe("Sources/main.swift");
         simulateResponse(msg.id, {
-          structuredContent: { output: "42\n", success: true },
+          structuredContent: { executionResults: "42\n" },
         });
       }
     });
 
     await client.connect();
-    const result = await client.executeSnippet({ tabIdentifier: "tab1", code: "print(42)" });
-    expect(result.output).toBe("42\n");
+    const result = await client.executeSnippet({
+      tabIdentifier: "tab1",
+      codeSnippet: "print(42)",
+      sourceFilePath: "Sources/main.swift",
+    });
+    expect(result.executionResults).toBe("42\n");
+    client.disconnect();
+  });
+
+  it("updateFile uses oldString/newString params", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "XcodeUpdate") {
+        const args = msg.params?.arguments;
+        expect(args.oldString).toBe("old code");
+        expect(args.newString).toBe("new code");
+        expect(args.replaceAll).toBe(true);
+        simulateResponse(msg.id, {
+          structuredContent: {
+            success: true, filePath: "main.swift", editsApplied: 2,
+            originalContentLength: 100, modifiedContentLength: 110,
+          },
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.updateFile({
+      tabIdentifier: "tab1", filePath: "main.swift",
+      oldString: "old code", newString: "new code", replaceAll: true,
+    });
+    expect(result.editsApplied).toBe(2);
+    client.disconnect();
+  });
+
+  it("mv uses sourcePath/destinationPath params", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "XcodeMV") {
+        const args = msg.params?.arguments;
+        expect(args.sourcePath).toBe("Sources/old.swift");
+        expect(args.destinationPath).toBe("Sources/new.swift");
+        simulateResponse(msg.id, {
+          structuredContent: { success: true, operation: "move", message: "Moved" },
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.mv({
+      tabIdentifier: "tab1",
+      sourcePath: "Sources/old.swift",
+      destinationPath: "Sources/new.swift",
+    });
     expect(result.success).toBe(true);
     client.disconnect();
   });

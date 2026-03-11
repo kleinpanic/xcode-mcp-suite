@@ -383,13 +383,14 @@ async function cmdRepl() {
   const pos = positionalArgs();
   const code = pos.join(" ");
   if (!code) die("Usage: xcmcp repl [--host <h>] <swift-code>");
+  const sourceFile = opt("file") ?? "main.swift";
   await withXcodeSession({ host: host() }, async (s) => {
-    const r = await s.executeSnippet(code);
+    const r = await s.executeSnippet(code, sourceFile);
     if (r.error) {
-      console.error(`\x1b[31m${r.error}\x1b[0m`);
-      if (!r.success) process.exit(1);
+      console.error(`\x1b[31m${r.error.message}\x1b[0m`);
+      process.exit(1);
     }
-    if (r.output) process.stdout.write(r.output);
+    if (r.executionResults) process.stdout.write(r.executionResults);
   });
 }
 
@@ -400,8 +401,8 @@ async function cmdPreview() {
   const previewName = opt("name");
   await withXcodeSession({ host: host() }, async (s) => {
     const r = await s.renderPreview(file, previewName);
-    if (r.error || !r.imageData) die(r.error ?? "No preview returned — check file has a #Preview or PreviewProvider");
-    writeFileSync(out, Buffer.from(r.imageData!, "base64"));
+    if (r.error || !r.imageData) die(r.error ?? "No preview returned — check the file has a #Preview or PreviewProvider");
+    writeFileSync(out, Buffer.from(r.imageData, "base64"));
     ok(`Preview saved: ${out}`);
   });
 }
@@ -415,14 +416,14 @@ async function cmdDocs() {
     if (flag("json")) {
       console.log(JSON.stringify(r, null, 2));
     } else {
-      if (!r.results || r.results.length === 0) {
+      if (!r.documents || r.documents.length === 0) {
         console.log("No results found.");
         return;
       }
-      for (const entry of r.results) {
-        console.log(`\n\x1b[1m${entry.title}\x1b[0m${entry.source ? ` [${entry.source}]` : ""}`);
-        if (entry.abstract) console.log(`  ${entry.abstract}`);
-        console.log(`  ${entry.url}`);
+      for (const doc of r.documents) {
+        console.log(`\n\x1b[1m${doc.title}\x1b[0m (score: ${doc.score.toFixed(3)})`);
+        if (doc.contents) console.log(`  ${doc.contents.slice(0, 200)}${doc.contents.length > 200 ? "…" : ""}`);
+        console.log(`  ${doc.uri}`);
       }
     }
   });
