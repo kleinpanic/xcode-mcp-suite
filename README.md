@@ -264,3 +264,24 @@ pnpm typecheck
 ## License
 
 MIT © kleinpanic
+
+## Visual Interaction (Simulator)
+
+The CLI includes a `ui` subcommand for seeing and interacting with the running simulator — enabling a full visual agent loop:
+
+```bash
+# See: capture simulator state
+xcmcp screenshot --host collins-pro --mode simulator --out /tmp/snap.png
+# → feed PNG to image/vision tool for coordinate analysis
+
+# Interact: tap, type, swipe
+xcmcp ui tap   --host collins-pro 195 420
+xcmcp ui type  --host collins-pro "hello world"
+xcmcp ui swipe --host collins-pro 200 600 200 200
+xcmcp ui key   --host collins-pro 36        # Return
+
+# Log: stream live app output
+xcmcp ui log --host collins-pro
+```
+
+The loop: **screenshot → analyze coordinates → interact → screenshot → verify**

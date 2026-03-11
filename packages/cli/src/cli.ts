@@ -305,9 +305,97 @@ async function cmdWindows() {
     case "repl":       await cmdRepl();       break;
     case "preview":    await cmdPreview();    break;
     case "windows":    await cmdWindows();    break;
+    case "ui":         await cmdUi();         break;
     case "help":
     case "--help":
     case "-h":
     default:           await cmdHelp();       break;
   }
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ─── UI Interaction ───────────────────────────────────────────────────────
+
+async function cmdUi() {
+  const sub = args[1];
+  const h = host();
+  const ssh = (cmd: string) =>
+    h ? `ssh ${h} "${cmd}"` : cmd;
+
+  switch (sub) {
+    case "tap": {
+      const x = args[2], y = args[3];
+      if (!x || !y) die("Usage: xcmcp ui tap <x> <y>");
+      execSync(ssh(`xcrun simctl io booted tap ${x} ${y}`), { stdio: "inherit" });
+      ok(`Tapped (${x}, ${y})`);
+      break;
+    }
+    case "type": {
+      const text = args.slice(2).join(" ");
+      if (!text) die("Usage: xcmcp ui type <text>");
+      execSync(ssh(`xcrun simctl io booted type "${text.replace(/"/g, '\\"')}"`), { stdio: "inherit" });
+      ok(`Typed: ${text}`);
+      break;
+    }
+    case "swipe": {
+      const [x1, y1, x2, y2, dur] = args.slice(2);
+      if (!x1 || !y1 || !x2 || !y2) die("Usage: xcmcp ui swipe <x1> <y1> <x2> <y2> [duration-ms]");
+      execSync(ssh(`xcrun simctl io booted swipe ${x1} ${y1} ${x2} ${y2} ${dur ?? 300}`), { stdio: "inherit" });
+      ok(`Swiped (${x1},${y1}) → (${x2},${y2})`);
+      break;
+    }
+    case "key": {
+      const key = args[2];
+      if (!key) die("Usage: xcmcp ui key <keycode>   e.g. 36=Return 51=Delete 53=Escape");
+      execSync(ssh(`xcrun simctl io booted sendkey ${key}`), { stdio: "inherit" });
+      ok(`Key sent: ${key}`);
+      break;
+    }
+    case "screenshot":
+    case "snap": {
+      const out = opt("out") ?? `/tmp/xcmcp-snap-${Date.now()}.png`;
+      await cmdScreenshot();
+      console.log(out);
+      break;
+    }
+    case "log": {
+      // Stream app logs from booted simulator
+      const proc = spawn(
+        h ? "ssh" : "xcrun",
+        h ? [h, "xcrun simctl spawn booted log stream --predicate 'process contains \"App\"'"]
+          : ["simctl", "spawn", "booted", "log", "stream"],
+        { stdio: "inherit" }
+      );
+      process.on("SIGINT", () => proc.kill());
+      break;
+    }
+    case "list": {
+      const out = h
+        ? execSync(`ssh ${h} "xcrun simctl list booted --json"`, { encoding: "utf8" })
+        : execSync(`xcrun simctl list booted --json`, { encoding: "utf8" });
+      const data = JSON.parse(out);
+      const devs = Object.values(data.devices as Record<string, unknown[]>).flat() as Array<{name:string; udid:string; state:string}>;
+      const booted = devs.filter(d => d.state === "Booted");
+      if (booted.length === 0) { console.log("No booted simulators"); break; }
+      for (const d of booted) console.log(`${d.udid}  ${d.name}`);
+      break;
+    }
+    default:
+      console.log(`
+xcmcp ui <subcommand> [options]
+
+Subcommands:
+  tap <x> <y>                    Tap at screen coordinates
+  type <text>                    Type text into focused element
+  swipe <x1> <y1> <x2> <y2>     Swipe gesture (optional duration ms)
+  key <keycode>                  Send key (36=Return, 51=Delete, 53=Escape, 123-126=arrows)
+  snap [--out <path>]            Screenshot current simulator state
+  log                            Stream simulator app logs
+  list                           List booted simulators
+
+Visual loop example:
+  xcmcp ui snap --out /tmp/s1.png && \\
+  xcmcp ui tap 195 420 && \\
+  xcmcp ui snap --out /tmp/s2.png
+`);
+  }
+}

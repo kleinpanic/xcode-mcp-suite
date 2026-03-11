@@ -130,14 +130,93 @@ xcmcp windows --host collins-pro          # list windows + tab-identifiers
 xcmcp list-tools                          # show all 20 tools
 ```
 
-## Screenshot Capture (visual auditing)
+## Visual See + Interact Loop
+
+The dev agent can **see** AND **interact** with the running simulator on collins-pro.
+
+### See (capture current state)
 
 ```bash
-# Capture booted simulator
+# Capture booted simulator screen → PNG
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/sim.png
+# Then use the `image` tool to analyze the PNG visually
 
-# Capture full macOS screen
+# SwiftUI preview direct from Xcode (no simulator needed)
+xcmcp call XcodeGetSwiftUIPreview '{"tab-identifier":"<id>","filePath":"Sources/Views/ContentView.swift"}'
+# Returns base64 PNG — decode and pass to image tool
+
+# Full macOS display (e.g. Xcode itself)
 xcmcp screenshot --host collins-pro --mode screen --out /tmp/screen.png
+```
+
+### Interact (control the simulator)
+
+```bash
+# Tap at screen coordinates (get coords from screenshot analysis)
+xcmcp ui tap --host collins-pro 195 420
+
+# Type text into focused field
+xcmcp ui type --host collins-pro "hello@example.com"
+
+# Swipe (e.g. scroll down)
+xcmcp ui swipe --host collins-pro 200 600 200 200
+
+# Key press (36=Return, 51=Delete, 53=Escape, 123-126=arrows)
+xcmcp ui key --host collins-pro 36
+
+# List booted simulators
+xcmcp ui list --host collins-pro
+
+# Stream app logs in real time
+xcmcp ui log --host collins-pro
+```
+
+### Full visual agent loop
+
+```bash
+# 1. Build and launch
+xcmcp build --host collins-pro
+xcmcp ui list --host collins-pro          # find booted simulator
+
+# 2. See initial state
+xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s1.png
+# → analyze /tmp/s1.png with `image` tool to find UI element coords
+
+# 3. Interact
+xcmcp ui tap --host collins-pro 195 420   # tap button at analyzed coords
+xcmcp ui type --host collins-pro "test input"
+
+# 4. See result
+xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s2.png
+# → analyze /tmp/s2.png to verify UI changed correctly
+
+# 5. Check logs
+xcmcp ui log --host collins-pro           # stream live logs
+```
+
+### In TypeScript (SDK)
+
+```typescript
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+// Helper: screenshot → base64 for image analysis
+function snap(host: string, out: string): string {
+  execSync(`xcmcp screenshot --host ${host} --mode simulator --out ${out}`);
+  return readFileSync(out).toString("base64");
+}
+
+// Helper: tap on simulator
+function tap(host: string, x: number, y: number) {
+  execSync(`xcmcp ui tap --host ${host} ${x} ${y}`);
+}
+
+// Visual loop
+const img1 = snap("collins-pro", "/tmp/before.png");
+// pass img1 to image tool for analysis → get coords
+tap("collins-pro", 195, 420);
+const img2 = snap("collins-pro", "/tmp/after.png");
+// pass img2 to verify interaction worked
 ```
 
 ## Troubleshooting
