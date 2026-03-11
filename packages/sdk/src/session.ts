@@ -23,6 +23,7 @@ import type {
   XcodeNavigateToSymbolResult,
   XcodeGetFileContentsParams,
   XcodeGetFileContentsResult,
+  XcodeGetDiagnosticsParams,
   XcodeGetDiagnosticsResult,
   XcodeGetSymbolInfoParams,
   XcodeGetSymbolInfoResult,

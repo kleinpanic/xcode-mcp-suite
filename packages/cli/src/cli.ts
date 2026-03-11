@@ -192,7 +192,8 @@ async function cmdBuild() {
   await withXcodeSession({ host: host() }, async (s) => {
     console.log("Building…");
     try {
-      const r = await s.buildProject({ scheme: opt("scheme") });
+      const scheme = opt("scheme");
+      const r = await s.buildProject(scheme ? { scheme } : {});
       ok(`Build succeeded (${r.warnings.length} warning(s))`);
     } catch (e: any) {
       if (e.issues) {
