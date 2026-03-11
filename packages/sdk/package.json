@@ -17,9 +17,8 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "tsup": "*",

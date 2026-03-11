@@ -12,6 +12,7 @@ import type {
   BuildProjectResult,
   GetBuildLogParams,
   GetBuildLogResult,
+  RunAllTestsParams,
   RunAllTestsResult,
   GetTestResultsResult,
   CleanBuildFolderResult,
@@ -97,8 +98,8 @@ export class XcodeSession {
     return this.client.getBuildLog({ ...params, "tab-identifier": await this.tabId() });
   }
 
-  async runAllTests(params: Omit<RunAllTestsResult, never> = {}): Promise<RunAllTestsResult> {
-    return this.client.runAllTests({ "tab-identifier": await this.tabId() });
+  async runAllTests(params: Omit<RunAllTestsParams, "tab-identifier"> = {}): Promise<RunAllTestsResult> {
+    return this.client.runAllTests({ ...params, "tab-identifier": await this.tabId() });
   }
 
   async getTestResults(): Promise<GetTestResultsResult> {
@@ -122,7 +123,9 @@ export class XcodeSession {
   }
 
   async getDiagnostics(filePath?: string): Promise<XcodeGetDiagnosticsResult> {
-    return this.client.getDiagnostics({ "tab-identifier": await this.tabId(), filePath });
+    const params: XcodeGetDiagnosticsParams = { "tab-identifier": await this.tabId() };
+    if (filePath !== undefined) params.filePath = filePath;
+    return this.client.getDiagnostics(params);
   }
 
   async getSymbolInfo(params: Omit<XcodeGetSymbolInfoParams, "tab-identifier">): Promise<XcodeGetSymbolInfoResult> {
