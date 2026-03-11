@@ -1,0 +1,25 @@
+{
+  "name": "xcode-mcp-suite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SDK, CLI, and MCP proxy for Xcode's agentic coding MCP bridge (xcrun mcpbridge)",
+  "license": "MIT",
+  "author": "kleinpanic",
+  "repository": { "type": "git", "url": "https://github.com/kleinpanic/xcode-mcp-suite" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint 'packages/*/src/**/*.ts'",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "tsup": "^8.0.0"
+  }
+}

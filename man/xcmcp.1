@@ -1,0 +1,178 @@
+.TH XCMCP 1 "2026-03-11" "xcode-mcp-suite 0.1.0" "User Commands"
+.SH NAME
+xcmcp \- Xcode MCP CLI: build, test, preview, and REPL via Xcode's agentic coding bridge
+.SH SYNOPSIS
+.B xcmcp
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B xcmcp
+is a command-line interface for Xcode's Model Context Protocol (MCP) bridge
+(\fBxcrun mcpbridge\fR). It enables AI coding agents and developers to build projects,
+run tests, execute Swift REPL sessions, capture SwiftUI previews, and take simulator
+screenshots from any machine that can reach the Xcode host via SSH.
+.PP
+Xcode 26.3 or later is required on the target host. The Intelligence toggle must be
+enabled in \fBXcode \(ra Settings \(ra Intelligence \(ra Model Context Protocol\fR.
+.PP
+Official Apple documentation:
+.UR https://developer.apple.com/documentation/xcode/giving\-agentic\-coding\-tools\-access\-to\-xcode
+.UE
+.SH COMMANDS
+.TP
+.B connect
+Verify SSH connectivity to the host and confirm Xcode is running with at least one
+open window. Prints each window's tab-identifier and title.
+.TP
+.B doctor
+Full preflight check: SSH reachability, \fBxcrun mcpbridge\fR availability (local only),
+MCP protocol handshake, and open window enumeration. Exits non-zero if any check fails.
+.TP
+.B list-tools
+Print all 20 Xcode MCP tools grouped by category, with documentation URL.
+.TP
+.BI "call " tool " [json-args]"
+Call any Xcode MCP tool by name with an optional JSON argument object. Prints the
+result as formatted JSON.
+.br
+Example: \fBxcmcp call XcodeListWindows '{}'\fR
+.TP
+.B build
+Build the active Xcode project or workspace. Exits non-zero on build errors.
+.TP
+.B test
+Run all tests in the active scheme. Prints pass/fail/skip counts and failure details.
+Exits non-zero when any test fails.
+.TP
+.B clean
+Clean the derived data / build folder.
+.TP
+.B screenshot
+Capture a PNG screenshot from the target host.
+.br
+Modes: \fBsimulator\fR (default) — booted iOS Simulator; \fBscreen\fR — full macOS display.
+.TP
+.BI "repl " swift-code
+Execute Swift code in the Xcode Swift REPL and print the output.
+.TP
+.B preview
+Render a SwiftUI preview for a .swift file and save it as a PNG.
+.TP
+.B windows
+List open Xcode windows with their tab-identifiers and project paths.
+.SH OPTIONS
+.TP
+.BI \-\-host " host"
+Remote macOS host running Xcode (SSH alias or hostname). Overrides \fBXCODE_HOST\fR.
+When omitted, runs against local \fBxcrun mcpbridge\fR.
+.TP
+.BI \-\-scheme " scheme"
+Override the active Xcode scheme (used by \fBbuild\fR and \fBtest\fR).
+.TP
+.BI \-\-mode " simulator" | screen
+Screenshot capture mode (used by \fBscreenshot\fR). Default: \fBsimulator\fR.
+.TP
+.BI \-\-out " path"
+Output path for screenshots and previews. Default: \fB/tmp/xcode-<type>-<timestamp>.png\fR.
+.TP
+.BI \-\-file " path"
+Swift source file for the \fBpreview\fR command.
+.TP
+.B \-\-json
+Emit raw JSON output (supported by \fBwindows\fR and \fBcall\fR).
+.TP
+.B \-\-version
+Print version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print help and exit.
+.SH ENVIRONMENT
+.TP
+.B XCODE_HOST
+Default remote macOS host. Overridden by \fB\-\-host\fR.
+.TP
+.B XCODE_SSH_ARGS
+Space-separated extra SSH arguments (e.g. \fB-i /path/to/key\fR).
+.SH EXAMPLES
+.PP
+Check everything is working on a remote host:
+.RS
+.B xcmcp doctor --host collins-pro
+.RE
+.PP
+Build the active project:
+.RS
+.B xcmcp build --host collins-pro
+.RE
+.PP
+Run tests and fail fast:
+.RS
+.B xcmcp test --host collins-pro --scheme MyApp
+.RE
+.PP
+Capture a simulator screenshot:
+.RS
+.B xcmcp screenshot --host collins-pro --mode simulator --out /tmp/ui.png
+.RE
+.PP
+Run Swift code in the REPL:
+.RS
+.B xcmcp repl --host collins-pro 'let x = [1,2,3].map { $0 * 2 }; print(x)'
+.RE
+.PP
+Render a SwiftUI preview:
+.RS
+.B xcmcp preview --host collins-pro --file Sources/Views/ContentView.swift
+.RE
+.PP
+Call any raw MCP tool:
+.RS
+.B xcmcp call XcodeGetSymbolInfo '{"tab-identifier":"tab-1","symbol":"ContentView"}'
+.RE
+.SH USING WITH AI AGENTS
+.PP
+Register xcode-mcp-suite as an MCP server in your agent of choice:
+.PP
+Claude Code:
+.RS
+.B claude mcp add --transport stdio xcode -- xcmcp call
+.RE
+.PP
+Or use the standalone proxy package directly:
+.RS
+.B claude mcp add --transport stdio xcode -- npx @kleinpanic/xcode-mcp-proxy
+.RE
+.PP
+Codex CLI:
+.RS
+.B codex mcp add xcode -- npx @kleinpanic/xcode-mcp-proxy
+.RE
+.PP
+OpenClaw (mcporter):
+.RS
+.B mcporter add stdio xcode "npx @kleinpanic/xcode-mcp-proxy"
+.RE
+.SH FILES
+.TP
+.I ~/.xcmcp/config.json
+Optional per-user configuration file (future).
+.SH SEE ALSO
+.B xcrun(1),
+.B ssh(1),
+.B man(1)
+.PP
+Apple Developer Documentation:
+.UR https://developer.apple.com/documentation/xcode/giving\-agentic\-coding\-tools\-access\-to\-xcode
+.UE
+.PP
+GitHub repository:
+.UR https://github.com/kleinpanic/xcode-mcp-suite
+.UE
+.SH BUGS
+Report issues at:
+.UR https://github.com/kleinpanic/xcode-mcp-suite/issues
+.UE
+.SH AUTHOR
+kleinpanic
+.SH LICENSE
+MIT

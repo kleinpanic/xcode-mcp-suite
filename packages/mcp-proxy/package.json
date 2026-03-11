@@ -1,0 +1,19 @@
+{
+  "name": "@kleinpanic/xcode-mcp-proxy",
+  "version": "0.1.0",
+  "description": "Standalone MCP proxy: bridges any MCP client to xcrun mcpbridge on a remote macOS host",
+  "license": "MIT",
+  "author": "kleinpanic",
+  "bin": { "xcode-mcp-proxy": "./dist/proxy.js" },
+  "main": "./dist/proxy.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/proxy.ts --format esm --banner.js '#!/usr/bin/env node' --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsup": "*",
+    "typescript": "*",
+    "@types/node": "*"
+  }
+}
