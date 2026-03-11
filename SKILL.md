@@ -139,9 +139,11 @@ xcmcp test    --host collins-pro [--scheme MyApp]
 xcmcp repl    --host collins-pro '<swift code>'
 xcmcp preview --host collins-pro --file Sources/Views/ContentView.swift
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/ui.png
+xcmcp docs    --host collins-pro "SwiftUI List"  # search Apple docs + WWDC
+xcmcp test-some --host collins-pro MyTests/testLogin  # run specific tests
 xcmcp call    <ToolName> '<json-args>'    # call any tool directly
 xcmcp windows --host collins-pro          # list windows + tabIdentifiers
-xcmcp list-tools                          # show all 20 tools
+xcmcp list-tools                          # show all 20 tools + TCC markers
 ```
 
 ## Visual See + Interact Loop
@@ -154,10 +156,25 @@ xcmcp screenshot --host collins-pro --mode simulator --out /tmp/sim.png
 
 ### Interact (control the simulator)
 ```bash
+# Input
 xcmcp ui tap   --host collins-pro 195 420     # tap at coords
 xcmcp ui type  --host collins-pro "text"      # type into field
 xcmcp ui swipe --host collins-pro 200 600 200 200   # scroll/swipe
 xcmcp ui key   --host collins-pro 36          # Return key
+
+# Simulator management
+xcmcp ui list --host collins-pro              # list booted simulators
+xcmcp ui list --host collins-pro --all        # list all available
+xcmcp ui boot --host collins-pro "iPhone 16 Pro"  # boot a simulator
+xcmcp ui shutdown --host collins-pro          # shut down booted sim
+xcmcp ui open --host collins-pro              # open Simulator.app
+
+# App lifecycle
+xcmcp ui install --host collins-pro /path/to/MyApp.app
+xcmcp ui launch --host collins-pro com.example.MyApp
+xcmcp ui terminate --host collins-pro com.example.MyApp
+
+# Logs
 xcmcp ui log   --host collins-pro             # stream app logs
 ```
 
@@ -172,6 +189,22 @@ xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s2.png
 # → analyze to verify UI changed correctly
 ```
 
+## TCC/Automation Permission (IMPORTANT)
+
+Some tools require macOS Automation (AppleEvents/TCC) permission:
+
+| Needs TCC | Tools |
+|-----------|-------|
+| **YES** | `BuildProject`, `RunAllTests`, `RunSomeTests`, `GetTestList`, `ExecuteSnippet`, `RenderPreview` |
+| **NO** | `XcodeRead`, `XcodeWrite`, `XcodeUpdate`, `XcodeGlob`, `XcodeGrep`, `XcodeLS`, `XcodeMakeDir`, `XcodeRM`, `XcodeMV`, `XcodeListNavigatorIssues`, `XcodeRefreshCodeIssuesInFile`, `DocumentationSearch`, `XcodeListWindows` |
+
+**Over SSH (our setup):** The TCC dialog appears on the Mac's physical display, not in SSH.
+To fix: sit at collins-pro once, run any TCC tool (e.g. `BuildProject`), click "Allow" in the
+macOS dialog. After that, SSH sessions work without further prompts.
+
+If the tool hangs indefinitely, the TCC dialog was never accepted — someone needs to
+physically click "Allow" on the Mac.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -181,7 +214,9 @@ xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s2.png
 | Bridge fails to connect | Check Settings → Intelligence → Xcode Tools toggle ON |
 | SSH timeout | Run `ssh collins-pro echo ok` to verify connectivity |
 | Empty tabIdentifier | Always call XcodeListWindows first |
-| Permission dialog | Click "Allow" in Xcode when first connecting |
+| Build/Test/Preview hangs forever | TCC dialog not accepted — physically click "Allow" on Mac |
+| "claude-code" not in Automation list | CLI tools lack bundle IDs; TCC may not persist. Re-accept on each CLI version update |
+| Permission dialog reappears | Known macOS limitation with CLI tools — accept again |
 
 ## Reference
 
