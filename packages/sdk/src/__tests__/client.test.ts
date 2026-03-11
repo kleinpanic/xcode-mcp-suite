@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { XcodeClient } from "../client.js";
-import { XcodeConnectionError, XcodeToolError } from "../types.js";
+import { XcodeConnectionError } from "../types.js";
 
 // ── Mock child_process.spawn ───────────────────────────────────────────────
 

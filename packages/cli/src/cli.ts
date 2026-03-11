@@ -7,7 +7,7 @@
 
 import { execSync, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { XcodeClient, XcodeSession, withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
+import { XcodeClient, withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
 
 const VERSION = "0.2.0";
 const APPLE_DOCS_URL =
@@ -287,20 +287,19 @@ async function cmdCall() {
 }
 
 async function cmdBuild() {
-  await withXcodeSession({ host: host() }, async (s) => {
+  await withXcodeSession({ host: host() }, async (s: any) => {
     console.log("Building…");
     try {
-      const scheme = opt("scheme");
-      const r = await s.buildProject(scheme ? { scheme } : {});
-      const warnCount = r.warnings?.length ?? 0;
-      ok(`Build succeeded${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}`);
+      const r = await s.buildProject();
+      const warnCount = r.errors?.filter((e: any) => e.classification === "warning").length ?? 0;
+      ok(`Build ${r.buildResult}${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}`);
       if (r.elapsedTime) console.log(`  ⏱ ${r.elapsedTime.toFixed(1)}s`);
       if (flag("json")) console.log(JSON.stringify(r, null, 2));
     } catch (e: any) {
-      if (e.name === "XcodeBuildError" && e.issues) {
+      if (e.name === "XcodeBuildError" && e.errors) {
         console.error("\nBuild errors:");
-        for (const i of e.issues) {
-          console.error(`  ${i.file ?? "?"}:${i.line ?? "?"}: ${i.message}`);
+        for (const i of e.errors) {
+          console.error(`  ${i.filePath ?? "?"}:${i.lineNumber ?? "?"}: ${i.message}`);
         }
       }
       die("Build failed");
@@ -309,23 +308,23 @@ async function cmdBuild() {
 }
 
 async function cmdTest() {
-  await withXcodeSession({ host: host() }, async (s) => {
-    const scheme = opt("scheme");
+  await withXcodeSession({ host: host() }, async (s: any) => {
     console.log("Running tests…");
-    const r = await s.runAllTests(scheme ? { scheme } : {});
+    const r = await s.runAllTests();
     if (flag("json")) {
       console.log(JSON.stringify(r, null, 2));
     } else {
-      console.log(`  Passed: ${r.passed ?? "?"}  Failed: ${r.failed ?? "?"}  Duration: ${r.duration ?? "?"}s`);
-      if (r.failures && r.failures.length > 0) {
+      const c = r.counts ?? {};
+      console.log(`  Passed: ${c.passed ?? "?"}  Failed: ${c.failed ?? "?"}  Skipped: ${c.skipped ?? 0}  Total: ${c.total ?? "?"}`);
+      const failed = r.results?.filter((t: any) => t.state === "failed") ?? [];
+      if (failed.length > 0) {
         console.error("\nFailures:");
-        for (const f of r.failures) {
-          console.error(`  ✗ ${f.testName}: ${f.message}`);
-          if (f.file) console.error(`    at ${f.file}:${f.line ?? "?"}`);
+        for (const f of failed) {
+          console.error(`  ✗ ${f.displayName} (${f.identifier})`);
         }
         process.exit(1);
       }
-      ok("All tests passed");
+      ok(r.summary ?? "All tests passed");
     }
   });
 }
@@ -333,19 +332,20 @@ async function cmdTest() {
 async function cmdTestSome() {
   const tests = positionalArgs();
   if (tests.length === 0) die("Usage: xcmcp test-some [--host <h>] <TestClass/testMethod> ...");
-  await withXcodeSession({ host: host() }, async (s) => {
-    const scheme = opt("scheme");
+  await withXcodeSession({ host: host() }, async (s: any) => {
     console.log(`Running ${tests.length} test(s)…`);
-    const r = await s.runSomeTests(tests, scheme);
+    const r = await s.runSomeTests(tests);
     if (flag("json")) {
       console.log(JSON.stringify(r, null, 2));
     } else {
-      console.log(`  Passed: ${r.passed ?? "?"}  Failed: ${r.failed ?? "?"}  Duration: ${r.duration ?? "?"}s`);
-      if (r.failures && r.failures.length > 0) {
-        for (const f of r.failures) console.error(`  ✗ ${f.testName}: ${f.message}`);
+      const c = r.counts ?? {};
+      console.log(`  Passed: ${c.passed ?? "?"}  Failed: ${c.failed ?? "?"}  Total: ${c.total ?? "?"}`);
+      const failed = r.results?.filter((t: any) => t.state === "failed") ?? [];
+      if (failed.length > 0) {
+        for (const f of failed) console.error(`  ✗ ${f.displayName} (${f.identifier})`);
         process.exit(1);
       }
-      ok("Tests passed");
+      ok(r.summary ?? "Tests passed");
     }
   });
 }
@@ -384,7 +384,7 @@ async function cmdRepl() {
   const code = pos.join(" ");
   if (!code) die("Usage: xcmcp repl [--host <h>] <swift-code>");
   const sourceFile = opt("file") ?? "main.swift";
-  await withXcodeSession({ host: host() }, async (s) => {
+  await withXcodeSession({ host: host() }, async (s: any) => {
     const r = await s.executeSnippet(code, sourceFile);
     if (r.error) {
       console.error(`\x1b[31m${r.error.message}\x1b[0m`);
@@ -399,7 +399,7 @@ async function cmdPreview() {
   if (!file) die("Usage: xcmcp preview --file <path.swift> [--out <path.png>] [--name <PreviewName>]");
   const out = opt("out") ?? `/tmp/xcode-preview-${Date.now()}.png`;
   const previewName = opt("name");
-  await withXcodeSession({ host: host() }, async (s) => {
+  await withXcodeSession({ host: host() }, async (s: any) => {
     const r = await s.renderPreview(file, previewName);
     if (r.error || !r.imageData) die(r.error ?? "No preview returned — check the file has a #Preview or PreviewProvider");
     writeFileSync(out, Buffer.from(r.imageData, "base64"));
@@ -411,7 +411,7 @@ async function cmdDocs() {
   const pos = positionalArgs();
   const query = pos.join(" ");
   if (!query) die("Usage: xcmcp docs [--host <h>] <search query>");
-  await withXcodeSession({ host: host() }, async (s) => {
+  await withXcodeSession({ host: host() }, async (s: any) => {
     const r = await s.searchDocumentation(query);
     if (flag("json")) {
       console.log(JSON.stringify(r, null, 2));
