@@ -2,41 +2,159 @@
 
 All 20 tools exposed by `xcrun mcpbridge` (Xcode 26.3+).
 
-> All tools except `XcodeListWindows`, `XcodeSearchDocumentation`, and `XcodeListSimulators` require a `tab-identifier`. Always call `XcodeListWindows` first.
+> Most tools require a `tabIdentifier` to target a specific Xcode window.
+> Always call `XcodeListWindows` first. `DocumentationSearch` does not require one.
 >
 > **Source:** https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode
 
 ---
 
-## Build & Test
+## File Operations (9 tools)
+
+### XcodeRead
+
+Read a file from the project (includes unsaved Xcode buffer changes).
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `filePath` | string | ✓ |
+
+**Returns:** `{ content, filePath }`
+
+---
+
+### XcodeWrite
+
+Write full content to a file (creates or overwrites).
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `filePath` | string | ✓ |
+| `content` | string | ✓ |
+
+**Returns:** `{ success }`
+
+---
+
+### XcodeUpdate
+
+Apply a str_replace-style patch to a file. The `oldText` must match exactly.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `filePath` | string | ✓ |
+| `oldText` | string | ✓ |
+| `newText` | string | ✓ |
+
+**Returns:** `{ success, replacements? }`
+
+---
+
+### XcodeGlob
+
+Find files by glob pattern.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `pattern` | string | ✓ |
+
+**Returns:** `{ files: string[] }`
+
+**Example:** `{ "tabIdentifier": "windowtab1", "pattern": "**/*.swift" }`
+
+---
+
+### XcodeGrep
+
+Search file contents.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `pattern` | string | ✓ |
+| `include` | string | |
+
+**Returns:** `{ matches: [{ file, line, text }] }`
+
+---
+
+### XcodeLS
+
+List directory contents.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `path` | string | ✓ |
+
+**Returns:** `{ entries: [{ name, type, size? }] }`
+
+---
+
+### XcodeMakeDir
+
+Create a directory.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `path` | string | ✓ |
+
+---
+
+### XcodeRM
+
+Remove a file or directory.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `path` | string | ✓ |
+
+---
+
+### XcodeMV
+
+Move or rename a file.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `from` | string | ✓ |
+| `to` | string | ✓ |
+
+---
+
+## Build & Test (5 tools)
 
 ### BuildProject
 
 Build the active project or workspace.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tab-identifier` | string | ✓ | Window identifier |
-| `scheme` | string | | Override active scheme |
-| `configuration` | string | | e.g. "Debug", "Release" |
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `scheme` | string | |
+| `configuration` | string | |
 
-**Returns:** `{ success, errors[], warnings[], notes[], duration }`
-
-**SDK:** `client.buildProject(params)` — throws `XcodeBuildError` on failure
+**Returns:** `{ buildResult, elapsedTime?, errors[], warnings?[] }`
 
 ---
 
 ### GetBuildLog
 
-Fetch build log entries.
+Fetch build log output.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tab-identifier` | string | ✓ | Window identifier |
-| `severity` | `"error" \| "warning" \| "all"` | | Filter by severity |
-| `limit` | number | | Max entries |
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `severity` | `"error"` \| `"warning"` \| `"all"` | |
 
-**Returns:** `{ entries[], total }`
+**Returns:** `{ log, entries?[] }`
 
 ---
 
@@ -44,239 +162,148 @@ Fetch build log entries.
 
 Run all tests in the active scheme.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tab-identifier` | string | ✓ | Window identifier |
-| `scheme` | string | | Override scheme |
-| `testPlan` | string | | Specific test plan |
+| Param | Type | Required |
+|-------|------|----------|
+| `tabIdentifier` | string | ✓ |
+| `scheme` | string | |
 
-**Returns:** `{ passed, failed, skipped, duration, failures[] }`
+**Returns:** `{ testResult, passed?, failed?, duration?, failures?[] }`
 
 ---
 
-### GetTestResults
+### RunSomeTests
 
-Get results from the most recent test run.
+Run specific tests by identifier.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
+| `tabIdentifier` | string | ✓ |
+| `tests` | string[] | ✓ |
+| `scheme` | string | |
 
 **Returns:** Same as `RunAllTests`
 
+**Example:** `{ "tabIdentifier": "windowtab1", "tests": ["MyAppTests/testLogin"] }`
+
 ---
 
-### CleanBuildFolder
+### GetTestList
 
-Clean derived data.
+List all available tests.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
+| `tabIdentifier` | string | ✓ |
+| `scheme` | string | |
 
-**Returns:** `{ success }`
-
----
-
-## Files & Navigation
-
-### XcodeListWindows ⭐ (call first)
-
-List all open Xcode windows and get their tab-identifiers.
-
-*No params required.*
-
-**Returns:** `{ windows: [{ "tab-identifier", title, projectPath?, workspacePath?, scheme? }] }`
+**Returns:** `{ tests: [{ name, suite, identifier }] }`
 
 ---
 
-### XcodeOpenFile
+## Diagnostics (2 tools)
 
-Open a file in Xcode.
+### XcodeListNavigatorIssues
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tab-identifier` | string | ✓ | Window |
-| `filePath` | string | ✓ | Absolute or project-relative path |
-| `line` | number | | Jump to line |
-
----
-
-### XcodeNavigateToSymbol
-
-Jump to a named symbol in the editor.
+Get all current issues (errors, warnings) from the Issue Navigator.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `symbol` | string | ✓ |
+| `tabIdentifier` | string | ✓ |
 
-**Returns:** `{ found, file?, line? }`
-
----
-
-### XcodeGetFileContents
-
-Read file contents through Xcode's buffer (includes unsaved edits).
-
-| Param | Type | Required |
-|-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `filePath` | string | ✓ |
-
-**Returns:** `{ contents, filePath, language? }`
+**Returns:** `{ issues: [{ message, file?, line?, severity, category? }] }`
 
 ---
 
 ### XcodeRefreshCodeIssuesInFile
 
-Re-run diagnostics on a specific file.
+Refresh and return live diagnostics for a specific file.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
+| `tabIdentifier` | string | ✓ |
 | `filePath` | string | ✓ |
 
 **Returns:** `{ issues[] }`
 
 ---
 
-## Diagnostics & Intelligence
+## Code Execution (1 tool)
 
-### XcodeGetDiagnostics
+### ExecuteSnippet
 
-Get current diagnostics for the project or a specific file.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `filePath` | string | |
-
-**Returns:** `{ diagnostics[] }`
-
----
-
-### XcodeGetSymbolInfo
-
-Look up type, declaration, and documentation for a symbol.
+Execute Swift code in a REPL-like environment.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `symbol` | string | ✓ |
-| `filePath` | string | |
-
-**Returns:** `{ symbol, kind, declaration?, documentation?, file?, line? }`
-
----
-
-### XcodeSearchDocumentation
-
-Search Apple developer documentation.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `query` | string | ✓ |
-| `limit` | number | |
-
-**Returns:** `{ results: [{ title, url, abstract? }] }`
-
----
-
-### XcodeGetCompletions
-
-Get code completions at a cursor position.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `filePath` | string | ✓ |
-| `line` | number | ✓ |
-| `column` | number | ✓ |
-
-**Returns:** `{ completions: [{ text, kind, documentation? }] }`
-
----
-
-### XcodeGetReferencesForSymbol
-
-Find all references to a symbol across the project.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `symbol` | string | ✓ |
-| `filePath` | string | |
-
-**Returns:** `{ references: [{ file, line, column, snippet? }] }`
-
----
-
-## Swift REPL & Previews
-
-### XcodeRunSwiftREPL
-
-Execute Swift code in the REPL.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tab-identifier` | string | ✓ | |
-| `code` | string | ✓ | Swift source code |
-| `timeout` | number | | ms, default 10000 |
+| `tabIdentifier` | string | ✓ |
+| `code` | string | ✓ |
+| `timeout` | number | |
 
 **Returns:** `{ output, error?, success }`
 
+**Example:** `{ "tabIdentifier": "windowtab1", "code": "print([1,2,3].map { $0 * 2 })" }`
+
 ---
 
-### XcodeGetSwiftUIPreview
+## Preview (1 tool)
 
-Render a SwiftUI preview and return a base64-encoded PNG.
+### RenderPreview
+
+Render a SwiftUI preview as a PNG image. The agent can literally see what the UI looks like.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
+| `tabIdentifier` | string | ✓ |
 | `filePath` | string | ✓ |
 | `previewName` | string | |
-| `deviceName` | string | |
 
 **Returns:** `{ imageData? (base64 PNG), error? }`
 
 ---
 
-### XcodeRefreshSwiftUIPreview
+## Documentation (1 tool)
 
-Refresh the preview canvas for a file.
+### DocumentationSearch
+
+Search Apple developer documentation and WWDC video transcripts.
+Uses Apple's MLX-accelerated semantic search ("Squirrel MLX") on Apple Silicon.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `filePath` | string | ✓ |
+| `query` | string | ✓ |
 
-**Returns:** `{ success }`
+**Returns:** `{ results: [{ title, url, abstract?, source? }] }`
+
+**Note:** `source` is "documentation" or "wwdc" (WWDC video transcripts). Covers iOS 15 through iOS 26.
 
 ---
 
-## Simulator
+## Windowing (1 tool)
 
-### XcodeListSimulators
+### XcodeListWindows ⭐ (call first)
 
-List available simulators and their state.
+List all open Xcode windows and get their tabIdentifiers.
 
 *No params required.*
 
-**Returns:** `{ simulators: [{ udid, name, runtime, state, deviceType }] }`
+**Returns:** `{ message: "* tabIdentifier: windowtab1, workspacePath: /path/to/project" }`
+
+**Important:** The `tabIdentifier` from this response is required by all other tools (except `DocumentationSearch`).
 
 ---
 
-### XcodeRunOnSimulator
+## Typical Workflow
 
-Build and run the app on a simulator.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `tab-identifier` | string | ✓ |
-| `simulatorUdid` | string | |
-| `deviceName` | string | |
-| `scheme` | string | |
-
-**Returns:** `{ success, simulatorUdid?, error? }`
+```
+1. XcodeListWindows → get tabIdentifier
+2. XcodeGlob { pattern: "**/*.swift" } → discover project files
+3. XcodeRead { filePath: "..." } → read source
+4. XcodeUpdate { filePath, oldText, newText } → edit source
+5. BuildProject → check for errors
+6. GetBuildLog { severity: "error" } → inspect failures
+7. XcodeListNavigatorIssues → see all project issues
+8. RunAllTests → run test suite
+9. RenderPreview { filePath: "ContentView.swift" } → visual audit
+10. ExecuteSnippet { code: "..." } → spot-check logic
+11. DocumentationSearch { query: "SwiftUI List" } → look up APIs
+```

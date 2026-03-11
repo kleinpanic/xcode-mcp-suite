@@ -1,18 +1,18 @@
 ---
 name: xcode-mcp-suite
 description: >
-  Build, test, preview, and inspect Xcode projects on collins-pro via the
-  Xcode 26.3 MCP bridge (xcrun mcpbridge). Provides all 20 Xcode MCP tools
-  over SSH stdio. Use when doing iOS/macOS development: building, running
-  tests, debugging Swift, capturing SwiftUI previews, or navigating code.
-  Full SDK and CLI available at ~/codeWS/GitHub/kleinpanic/xcode-mcp-suite.
+  Build, test, edit files, preview, and inspect Xcode projects on collins-pro via
+  Xcode 26.3's MCP bridge (xcrun mcpbridge). All 20 Xcode MCP tools over SSH stdio.
+  Use for iOS/macOS development: building, running tests, editing Swift files,
+  capturing SwiftUI previews, navigating code, searching Apple docs, and visually
+  interacting with the simulator. Full SDK and CLI at ~/codeWS/GitHub/kleinpanic/xcode-mcp-suite.
 ---
 
 # Xcode MCP Suite — Dev Skill
 
-Connect the dev agent to Xcode 26.3 on collins-pro via `xcrun mcpbridge` over SSH.
+Connect to Xcode 26.3 on collins-pro via `xcrun mcpbridge` over SSH.
 
-**GitHub:** https://github.com/kleinpanic/xcode-mcp-suite  
+**GitHub:** https://github.com/kleinpanic/xcode-mcp-suite
 **Apple Docs:** https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode
 
 ## Prerequisites
@@ -21,84 +21,81 @@ Connect the dev agent to Xcode 26.3 on collins-pro via `xcrun mcpbridge` over SS
 - **Xcode → Settings → Intelligence → Model Context Protocol → Xcode Tools: ON**
 - SSH alias `collins-pro` reachable
 
-## Quick Connection (CLI)
+## All 20 Xcode MCP Tools (Correct Names)
 
-```bash
-# Preflight check
-xcmcp doctor --host collins-pro
+### File Operations (9 tools)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `XcodeRead` | Read file from project (includes unsaved buffer) | `readFile(path)` |
+| `XcodeWrite` | Write full file content (create/overwrite) | `writeFile(path, content)` |
+| `XcodeUpdate` | str_replace patch (oldText → newText) | `updateFile(path, old, new)` |
+| `XcodeGlob` | Find files by glob pattern (`**/*.swift`) | `glob(pattern)` |
+| `XcodeGrep` | Search file contents | `grep(pattern)` |
+| `XcodeLS` | List directory contents | `ls(path)` |
+| `XcodeMakeDir` | Create directories | `mkdir(path)` |
+| `XcodeRM` | Remove files/directories | `rm(path)` |
+| `XcodeMV` | Move/rename files | `mv(from, to)` |
 
-# Or install from repo
-cd ~/codeWS/GitHub/kleinpanic/xcode-mcp-suite
-pnpm install && pnpm build
+### Build & Test (5 tools)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `BuildProject` | Build active scheme | `buildProject()` |
+| `GetBuildLog` | Get build output (filter by severity) | `getBuildLog()` |
+| `RunAllTests` | Run all tests in active scheme | `runAllTests()` |
+| `RunSomeTests` | Run specific tests by identifier | `runSomeTests(["MyTests/testX"])` |
+| `GetTestList` | List all available tests | `getTestList()` |
+
+### Diagnostics (2 tools)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `XcodeListNavigatorIssues` | All project errors/warnings | `listNavigatorIssues()` |
+| `XcodeRefreshCodeIssuesInFile` | Live diagnostics for one file | `refreshCodeIssuesInFile(path)` |
+
+### Code Execution (1 tool)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `ExecuteSnippet` | Run Swift code in REPL-like env | `executeSnippet(code)` |
+
+### Preview (1 tool)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `RenderPreview` | SwiftUI preview → base64 PNG image | `renderPreview(path)` |
+
+### Documentation (1 tool)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `DocumentationSearch` | Search Apple docs + WWDC transcripts (MLX semantic) | `searchDocumentation(query)` |
+
+### Windowing (1 tool)
+| Tool | What it does | SDK method |
+|------|-------------|------------|
+| `XcodeListWindows` | **⭐ Call first** — get `tabIdentifier` for all tools | `listWindows()` |
+
+## CRITICAL: Always Start With XcodeListWindows
+
+Every tool (except DocumentationSearch) requires a `tabIdentifier`. Get it from XcodeListWindows first:
+
+```
+→ XcodeListWindows()
+← { "message": "* tabIdentifier: windowtab1, workspacePath: /Users/you/MyApp.xcodeproj" }
 ```
 
-## MCP Proxy — Register with Claude Code / Codex
-
-```bash
-# Claude Code (one-time setup)
-claude mcp add --transport stdio xcode -- npx @kleinpanic/xcode-mcp-proxy
-
-# Codex
-codex mcp add xcode -- npx @kleinpanic/xcode-mcp-proxy
-
-# Set host
-export XCODE_HOST=collins-pro
-```
-
-## All 20 Xcode MCP Tools
-
-### Build & Test
-| Tool | What it does |
-|------|-------------|
-| `BuildProject` | Build active scheme; returns errors/warnings |
-| `GetBuildLog` | Fetch build log (filter: error/warning/all) |
-| `RunAllTests` | Run all tests in active scheme |
-| `GetTestResults` | Results from most recent test run |
-| `CleanBuildFolder` | Clean derived data |
-
-### Files & Navigation
-| Tool | What it does |
-|------|-------------|
-| `XcodeListWindows` | **⭐ Call first** — get `tab-identifier` for all other tools |
-| `XcodeOpenFile` | Open file in Xcode editor |
-| `XcodeNavigateToSymbol` | Jump to named symbol |
-| `XcodeGetFileContents` | Read file via Xcode buffer (includes unsaved edits) |
-| `XcodeRefreshCodeIssuesInFile` | Re-run diagnostics on a file |
-
-### Diagnostics & Intelligence
-| Tool | What it does |
-|------|-------------|
-| `XcodeGetDiagnostics` | All current errors/warnings |
-| `XcodeGetSymbolInfo` | Type, declaration, docs for a symbol |
-| `XcodeSearchDocumentation` | Search Apple developer docs |
-| `XcodeGetCompletions` | Code completions at cursor position |
-| `XcodeGetReferencesForSymbol` | All references to a symbol |
-
-### Swift REPL & Previews
-| Tool | What it does |
-|------|-------------|
-| `XcodeRunSwiftREPL` | Execute Swift code in REPL |
-| `XcodeGetSwiftUIPreview` | Render SwiftUI preview → base64 PNG |
-| `XcodeRefreshSwiftUIPreview` | Refresh preview canvas |
-
-### Simulator
-| Tool | What it does |
-|------|-------------|
-| `XcodeListSimulators` | List simulators and boot state |
-| `XcodeRunOnSimulator` | Build and run on simulator |
+Then pass `tabIdentifier: "windowtab1"` to every subsequent call.
 
 ## Typical Dev Workflow
 
 ```
-1. xcmcp doctor --host collins-pro           # verify everything works
-2. XcodeListWindows                          # get tab-identifier
-3. BuildProject {tab-identifier}             # build → check errors
-4. GetBuildLog {tab-identifier, severity: "error"}  # see what's broken
-5. <fix files>
-6. BuildProject again                        # iterate until clean
-7. RunAllTests {tab-identifier}              # run test suite
-8. XcodeGetSwiftUIPreview {tab, filePath}    # visual audit
-9. XcodeRunSwiftREPL {tab, code}             # spot-check logic
+1. XcodeListWindows                          # get tabIdentifier
+2. XcodeGlob { pattern: "**/*.swift" }       # discover project files
+3. XcodeRead { filePath: "..." }             # read source code
+4. XcodeUpdate { filePath, oldText, newText } # edit with str_replace
+5. BuildProject { tabIdentifier }            # build → check errors
+6. GetBuildLog { severity: "error" }         # see what's broken
+7. XcodeListNavigatorIssues                  # all project issues
+8. RunAllTests                               # run test suite
+9. RenderPreview { filePath }                # visual audit → PNG
+10. ExecuteSnippet { code: "..." }           # spot-check Swift logic
+11. DocumentationSearch { query: "..." }     # look up Apple APIs + WWDC
 ```
 
 ## SDK Usage (TypeScript)
@@ -106,13 +103,31 @@ export XCODE_HOST=collins-pro
 ```typescript
 import { withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
 
-await withXcodeSession({ host: "collins-pro" }, async (session) => {
-  // tab-identifier managed automatically
-  const build = await session.buildProject({ scheme: "MyApp" });
-  const tests = await session.runAllTests();
-  const preview = await session.getSwiftUIPreview({
-    filePath: "Sources/Views/ContentView.swift"
-  });
+await withXcodeSession({ host: "collins-pro" }, async (s) => {
+  // tabIdentifier managed automatically by XcodeSession
+
+  // File operations
+  const files = await s.glob("**/*.swift");
+  const source = await s.readFile("Sources/App.swift");
+  await s.updateFile("Sources/App.swift", "old code", "new code");
+
+  // Build & test
+  const build = await s.buildProject();
+  const tests = await s.runAllTests();
+  const specific = await s.runSomeTests(["MyAppTests/testLogin"]);
+
+  // Diagnostics
+  const issues = await s.listNavigatorIssues();
+  const fileIssues = await s.refreshCodeIssuesInFile("Sources/App.swift");
+
+  // Execute Swift
+  const result = await s.executeSnippet('print([1,2,3].map { $0 * 2 })');
+
+  // Preview → base64 PNG
+  const preview = await s.renderPreview("Sources/Views/ContentView.swift");
+
+  // Search Apple docs + WWDC transcripts
+  const docs = await s.searchDocumentation("SwiftUI List");
 });
 ```
 
@@ -121,102 +136,40 @@ await withXcodeSession({ host: "collins-pro" }, async (session) => {
 ```bash
 xcmcp build   --host collins-pro [--scheme MyApp]
 xcmcp test    --host collins-pro [--scheme MyApp]
-xcmcp clean   --host collins-pro
 xcmcp repl    --host collins-pro '<swift code>'
 xcmcp preview --host collins-pro --file Sources/Views/ContentView.swift
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/ui.png
 xcmcp call    <ToolName> '<json-args>'    # call any tool directly
-xcmcp windows --host collins-pro          # list windows + tab-identifiers
+xcmcp windows --host collins-pro          # list windows + tabIdentifiers
 xcmcp list-tools                          # show all 20 tools
 ```
 
 ## Visual See + Interact Loop
 
-The dev agent can **see** AND **interact** with the running simulator on collins-pro.
-
 ### See (capture current state)
-
 ```bash
-# Capture booted simulator screen → PNG
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/sim.png
-# Then use the `image` tool to analyze the PNG visually
-
-# SwiftUI preview direct from Xcode (no simulator needed)
-xcmcp call XcodeGetSwiftUIPreview '{"tab-identifier":"<id>","filePath":"Sources/Views/ContentView.swift"}'
-# Returns base64 PNG — decode and pass to image tool
-
-# Full macOS display (e.g. Xcode itself)
-xcmcp screenshot --host collins-pro --mode screen --out /tmp/screen.png
+# Then use `image` tool to analyze the PNG and find UI element coords
 ```
 
 ### Interact (control the simulator)
-
 ```bash
-# Tap at screen coordinates (get coords from screenshot analysis)
-xcmcp ui tap --host collins-pro 195 420
-
-# Type text into focused field
-xcmcp ui type --host collins-pro "hello@example.com"
-
-# Swipe (e.g. scroll down)
-xcmcp ui swipe --host collins-pro 200 600 200 200
-
-# Key press (36=Return, 51=Delete, 53=Escape, 123-126=arrows)
-xcmcp ui key --host collins-pro 36
-
-# List booted simulators
-xcmcp ui list --host collins-pro
-
-# Stream app logs in real time
-xcmcp ui log --host collins-pro
+xcmcp ui tap   --host collins-pro 195 420     # tap at coords
+xcmcp ui type  --host collins-pro "text"      # type into field
+xcmcp ui swipe --host collins-pro 200 600 200 200   # scroll/swipe
+xcmcp ui key   --host collins-pro 36          # Return key
+xcmcp ui log   --host collins-pro             # stream app logs
 ```
 
-### Full visual agent loop
-
+### Full visual loop
 ```bash
-# 1. Build and launch
+# build → screenshot → analyze → interact → screenshot → verify
 xcmcp build --host collins-pro
-xcmcp ui list --host collins-pro          # find booted simulator
-
-# 2. See initial state
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s1.png
-# → analyze /tmp/s1.png with `image` tool to find UI element coords
-
-# 3. Interact
-xcmcp ui tap --host collins-pro 195 420   # tap button at analyzed coords
-xcmcp ui type --host collins-pro "test input"
-
-# 4. See result
+# → analyze with `image` tool → get button coords
+xcmcp ui tap --host collins-pro 195 420
 xcmcp screenshot --host collins-pro --mode simulator --out /tmp/s2.png
-# → analyze /tmp/s2.png to verify UI changed correctly
-
-# 5. Check logs
-xcmcp ui log --host collins-pro           # stream live logs
-```
-
-### In TypeScript (SDK)
-
-```typescript
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-
-// Helper: screenshot → base64 for image analysis
-function snap(host: string, out: string): string {
-  execSync(`xcmcp screenshot --host ${host} --mode simulator --out ${out}`);
-  return readFileSync(out).toString("base64");
-}
-
-// Helper: tap on simulator
-function tap(host: string, x: number, y: number) {
-  execSync(`xcmcp ui tap --host ${host} ${x} ${y}`);
-}
-
-// Visual loop
-const img1 = snap("collins-pro", "/tmp/before.png");
-// pass img1 to image tool for analysis → get coords
-tap("collins-pro", 195, 420);
-const img2 = snap("collins-pro", "/tmp/after.png");
-// pass img2 to verify interaction worked
+# → analyze to verify UI changed correctly
 ```
 
 ## Troubleshooting
@@ -224,25 +177,14 @@ const img2 = snap("collins-pro", "/tmp/after.png");
 | Problem | Fix |
 |---------|-----|
 | "No Xcode windows found" | Open a project in Xcode on collins-pro |
-| Bridge fails to connect | Check Settings → Intelligence → Xcode Tools toggle is ON |
+| MCP error -32600 "output schema" | Update to Xcode 26.3 RC2+ (structuredContent fix) |
+| Bridge fails to connect | Check Settings → Intelligence → Xcode Tools toggle ON |
 | SSH timeout | Run `ssh collins-pro echo ok` to verify connectivity |
-| Empty tab-identifier | Always call `XcodeListWindows` first |
-| Simulator screenshot fails | Boot a simulator or use `--mode screen` |
+| Empty tabIdentifier | Always call XcodeListWindows first |
+| Permission dialog | Click "Allow" in Xcode when first connecting |
 
-## Local Development
+## Reference
 
-```bash
-cd ~/codeWS/GitHub/kleinpanic/xcode-mcp-suite
-pnpm install
-pnpm build           # build all packages
-pnpm test            # run unit tests (6 tests)
-pnpm typecheck       # TypeScript strict check
-man -l man/xcmcp.1   # read man page
-```
-
-## Reference Docs
-
-- [Tools Reference](~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/tools-reference.md)
+- [Tools Reference](~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/tools-reference.md) — all 20 tools with full params
 - [Agent Integration Guide](~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/agent-integration.md)
 - [Apple Official Docs](~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/apple-official.md)
-- [Quickstart](~/codeWS/GitHub/kleinpanic/xcode-mcp-suite/docs/quickstart.md)

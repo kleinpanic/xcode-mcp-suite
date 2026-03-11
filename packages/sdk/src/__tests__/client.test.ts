@@ -53,7 +53,6 @@ describe("XcodeClient", () => {
   it("connect() sends initialize handshake", async () => {
     const client = new XcodeClient({ timeout: 500 });
 
-    // Auto-respond to initialize and notifications/initialized
     mockStdin.write.mockImplementation((line: string) => {
       const msg = JSON.parse(line.trim());
       if (msg.method === "initialize") simulateResponse(msg.id, { protocolVersion: "2024-11-05" });
@@ -67,7 +66,7 @@ describe("XcodeClient", () => {
     expect(firstCall.params.clientInfo.name).toBe("xcode-mcp-sdk");
   });
 
-  it("listWindows returns parsed window list", async () => {
+  it("listWindows returns parsed result (structuredContent)", async () => {
     const client = new XcodeClient({ timeout: 500 });
 
     mockStdin.write.mockImplementation((line: string) => {
@@ -76,7 +75,9 @@ describe("XcodeClient", () => {
       if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
       if (msg.method === "tools/call" && msg.params?.name === "XcodeListWindows") {
         simulateResponse(msg.id, {
-          content: [{ type: "text", text: JSON.stringify({ windows: [{ "tab-identifier": "tab-1", title: "MyApp" }] }) }],
+          structuredContent: {
+            windows: [{ tabIdentifier: "windowtab1", workspacePath: "/Users/me/MyApp.xcodeproj" }],
+          },
         });
       }
     });
@@ -84,7 +85,50 @@ describe("XcodeClient", () => {
     await client.connect();
     const result = await client.listWindows();
     expect(result.windows).toHaveLength(1);
-    expect(result.windows[0]?.["tab-identifier"]).toBe("tab-1");
+    expect(result.windows?.[0]?.tabIdentifier).toBe("windowtab1");
+    client.disconnect();
+  });
+
+  it("listWindows falls back to content text parsing", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "XcodeListWindows") {
+        simulateResponse(msg.id, {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ message: "* tabIdentifier: windowtab1, workspacePath: /path" }),
+          }],
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.listWindows();
+    expect(result.message).toContain("tabIdentifier");
+    client.disconnect();
+  });
+
+  it("readFile sends XcodeRead tool call", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "XcodeRead") {
+        simulateResponse(msg.id, {
+          structuredContent: { content: "import SwiftUI", filePath: "main.swift" },
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.readFile({ tabIdentifier: "tab1", filePath: "main.swift" });
+    expect(result.content).toBe("import SwiftUI");
     client.disconnect();
   });
 
@@ -117,23 +161,39 @@ describe("XcodeClient", () => {
       if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
       if (msg.method === "tools/call" && msg.params?.name === "BuildProject") {
         simulateResponse(msg.id, {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              success: false,
-              errors: [{ message: "Use of undeclared type 'Foo'", severity: "error", file: "main.swift", line: 10 }],
-              warnings: [],
-              notes: [],
-            }),
-          }],
+          structuredContent: {
+            buildResult: "Build failed",
+            errors: [{ message: "Use of undeclared type 'Foo'", severity: "error", file: "main.swift", line: 10 }],
+          },
         });
       }
     });
 
     await client.connect();
     await expect(
-      client.buildProject({ "tab-identifier": "tab-1" }),
+      client.buildProject({ tabIdentifier: "tab1" }),
     ).rejects.toThrow("Build failed with 1 error(s)");
+    client.disconnect();
+  });
+
+  it("callTool sends correct MCP tool call", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call" && msg.params?.name === "ExecuteSnippet") {
+        simulateResponse(msg.id, {
+          structuredContent: { output: "42\n", success: true },
+        });
+      }
+    });
+
+    await client.connect();
+    const result = await client.executeSnippet({ tabIdentifier: "tab1", code: "print(42)" });
+    expect(result.output).toBe("42\n");
+    expect(result.success).toBe(true);
     client.disconnect();
   });
 });

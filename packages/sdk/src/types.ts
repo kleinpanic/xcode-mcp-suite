@@ -1,242 +1,256 @@
 /**
  * Core types for the Xcode MCP SDK.
  *
+ * All 20 tools as documented in Xcode 26.3's xcrun mcpbridge.
  * @see https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode
  */
 
 // ─── Shared ────────────────────────────────────────────────────────────────
 
-/** Every tool call that targets a specific Xcode window requires this. */
+/** Most tools require a tabIdentifier to target a specific Xcode window. */
 export interface WithTabIdentifier {
   /** Obtained from {@link XcodeListWindowsResult}. Always call XcodeListWindows first. */
-  "tab-identifier": string;
+  tabIdentifier: string;
 }
 
-// ─── Build & Test ──────────────────────────────────────────────────────────
+// ─── File Operations (9 tools) ─────────────────────────────────────────────
+
+export interface XcodeReadParams extends WithTabIdentifier {
+  /** Absolute or project-relative file path. */
+  filePath: string;
+}
+export interface XcodeReadResult {
+  content: string;
+  filePath: string;
+}
+
+export interface XcodeWriteParams extends WithTabIdentifier {
+  /** Absolute or project-relative file path. */
+  filePath: string;
+  /** Full file content to write. */
+  content: string;
+}
+export interface XcodeWriteResult {
+  success: boolean;
+}
+
+export interface XcodeUpdateParams extends WithTabIdentifier {
+  /** File to patch. */
+  filePath: string;
+  /** Exact text to find (must match exactly). */
+  oldText: string;
+  /** Replacement text. */
+  newText: string;
+}
+export interface XcodeUpdateResult {
+  success: boolean;
+  /** Number of replacements made. */
+  replacements?: number;
+}
+
+export interface XcodeGlobParams extends WithTabIdentifier {
+  /** Glob pattern (e.g. "**\/*.swift"). */
+  pattern: string;
+}
+export interface XcodeGlobResult {
+  files: string[];
+}
+
+export interface XcodeGrepParams extends WithTabIdentifier {
+  /** Search pattern (string or regex). */
+  pattern: string;
+  /** Optional: limit search to specific path/glob. */
+  include?: string;
+}
+export interface XcodeGrepResult {
+  matches: GrepMatch[];
+}
+export interface GrepMatch {
+  file: string;
+  line: number;
+  text: string;
+}
+
+export interface XcodeLSParams extends WithTabIdentifier {
+  /** Directory path to list. */
+  path: string;
+}
+export interface XcodeLSResult {
+  entries: DirectoryEntry[];
+}
+export interface DirectoryEntry {
+  name: string;
+  type: "file" | "directory" | "symlink";
+  size?: number;
+}
+
+export interface XcodeMakeDirParams extends WithTabIdentifier {
+  /** Directory path to create. */
+  path: string;
+}
+export interface XcodeMakeDirResult {
+  success: boolean;
+}
+
+export interface XcodeRMParams extends WithTabIdentifier {
+  /** File or directory to remove. */
+  path: string;
+}
+export interface XcodeRMResult {
+  success: boolean;
+}
+
+export interface XcodeMVParams extends WithTabIdentifier {
+  /** Source path. */
+  from: string;
+  /** Destination path. */
+  to: string;
+}
+export interface XcodeMVResult {
+  success: boolean;
+}
+
+// ─── Build & Test (5 tools) ────────────────────────────────────────────────
 
 export interface BuildProjectParams extends WithTabIdentifier {
-  /** Override the active scheme. */
   scheme?: string;
-  /** Override the active configuration (e.g. "Debug", "Release"). */
   configuration?: string;
 }
-
 export interface BuildProjectResult {
-  success: boolean;
+  buildResult: string;
+  elapsedTime?: number;
   errors: BuildIssue[];
-  warnings: BuildIssue[];
-  notes: BuildIssue[];
-  duration?: number;
+  warnings?: BuildIssue[];
 }
-
 export interface BuildIssue {
   message: string;
   file?: string;
   line?: number;
   column?: number;
-  severity: "error" | "warning" | "note";
+  severity?: "error" | "warning" | "note";
 }
 
 export interface GetBuildLogParams extends WithTabIdentifier {
   severity?: "error" | "warning" | "all";
-  limit?: number;
 }
-
 export interface GetBuildLogResult {
-  entries: BuildIssue[];
-  total: number;
+  log: string;
+  entries?: BuildIssue[];
 }
 
 export interface RunAllTestsParams extends WithTabIdentifier {
   scheme?: string;
-  testPlan?: string;
 }
-
 export interface RunAllTestsResult {
-  passed: number;
-  failed: number;
-  skipped: number;
-  duration: number;
-  failures: TestFailure[];
+  testResult: string;
+  passed?: number;
+  failed?: number;
+  duration?: number;
+  failures?: TestFailure[];
 }
-
 export interface TestFailure {
   testName: string;
-  file: string;
-  line: number;
+  file?: string;
+  line?: number;
   message: string;
 }
 
-export interface GetTestResultsParams extends WithTabIdentifier {}
-
-export interface GetTestResultsResult extends RunAllTestsResult {}
-
-export interface CleanBuildFolderParams extends WithTabIdentifier {}
-export interface CleanBuildFolderResult { success: boolean }
-
-// ─── Files & Navigation ────────────────────────────────────────────────────
-
-export interface XcodeListWindowsParams {}
-
-export interface XcodeListWindowsResult {
-  windows: XcodeWindow[];
-}
-
-export interface XcodeWindow {
-  "tab-identifier": string;
-  title: string;
-  projectPath?: string;
-  workspacePath?: string;
+export interface RunSomeTestsParams extends WithTabIdentifier {
+  /** Test identifiers to run (e.g. "MyAppTests/testLogin"). */
+  tests: string[];
   scheme?: string;
 }
+export interface RunSomeTestsResult extends RunAllTestsResult {}
 
-export interface XcodeOpenFileParams extends WithTabIdentifier {
-  filePath: string;
-  line?: number;
+export interface GetTestListParams extends WithTabIdentifier {
+  scheme?: string;
 }
-export interface XcodeOpenFileResult { success: boolean }
+export interface GetTestListResult {
+  tests: TestEntry[];
+}
+export interface TestEntry {
+  name: string;
+  suite: string;
+  identifier: string;
+}
 
-export interface XcodeNavigateToSymbolParams extends WithTabIdentifier {
-  symbol: string;
+// ─── Diagnostics (2 tools) ─────────────────────────────────────────────────
+
+export interface XcodeListNavigatorIssuesParams extends WithTabIdentifier {}
+export interface XcodeListNavigatorIssuesResult {
+  issues: NavigatorIssue[];
 }
-export interface XcodeNavigateToSymbolResult {
-  found: boolean;
+export interface NavigatorIssue {
+  message: string;
   file?: string;
   line?: number;
-}
-
-export interface XcodeGetFileContentsParams extends WithTabIdentifier {
-  filePath: string;
-}
-export interface XcodeGetFileContentsResult {
-  contents: string;
-  filePath: string;
-  language?: string;
+  column?: number;
+  severity: "error" | "warning" | "note";
+  category?: string;
 }
 
 export interface XcodeRefreshCodeIssuesInFileParams extends WithTabIdentifier {
   filePath: string;
 }
 export interface XcodeRefreshCodeIssuesInFileResult {
-  issues: BuildIssue[];
+  issues: NavigatorIssue[];
 }
 
-// ─── Diagnostics & Intelligence ────────────────────────────────────────────
+// ─── Code Execution (1 tool) ───────────────────────────────────────────────
 
-export interface XcodeGetDiagnosticsParams extends WithTabIdentifier {
-  filePath?: string;
-}
-export interface XcodeGetDiagnosticsResult {
-  diagnostics: BuildIssue[];
-}
-
-export interface XcodeGetSymbolInfoParams extends WithTabIdentifier {
-  symbol: string;
-  filePath?: string;
-}
-export interface XcodeGetSymbolInfoResult {
-  symbol: string;
-  kind: string;
-  declaration?: string;
-  documentation?: string;
-  file?: string;
-  line?: number;
-}
-
-export interface XcodeSearchDocumentationParams {
-  query: string;
-  limit?: number;
-}
-export interface XcodeSearchDocumentationResult {
-  results: DocumentationResult[];
-}
-export interface DocumentationResult {
-  title: string;
-  url: string;
-  abstract?: string;
-}
-
-export interface XcodeGetCompletionsParams extends WithTabIdentifier {
-  filePath: string;
-  line: number;
-  column: number;
-}
-export interface XcodeGetCompletionsResult {
-  completions: Completion[];
-}
-export interface Completion {
-  text: string;
-  kind: string;
-  documentation?: string;
-}
-
-export interface XcodeGetReferencesForSymbolParams extends WithTabIdentifier {
-  symbol: string;
-  filePath?: string;
-}
-export interface XcodeGetReferencesForSymbolResult {
-  references: SymbolReference[];
-}
-export interface SymbolReference {
-  file: string;
-  line: number;
-  column: number;
-  snippet?: string;
-}
-
-// ─── Swift REPL & Previews ─────────────────────────────────────────────────
-
-export interface XcodeRunSwiftREPLParams extends WithTabIdentifier {
+export interface ExecuteSnippetParams extends WithTabIdentifier {
+  /** Swift source code to execute. */
   code: string;
   timeout?: number;
 }
-export interface XcodeRunSwiftREPLResult {
+export interface ExecuteSnippetResult {
   output: string;
   error?: string;
   success: boolean;
 }
 
-export interface XcodeGetSwiftUIPreviewParams extends WithTabIdentifier {
+// ─── Preview (1 tool) ──────────────────────────────────────────────────────
+
+export interface RenderPreviewParams extends WithTabIdentifier {
+  /** SwiftUI source file path. */
   filePath: string;
+  /** Optional preview name within the file. */
   previewName?: string;
-  deviceName?: string;
 }
-export interface XcodeGetSwiftUIPreviewResult {
-  /** Base64-encoded PNG of the rendered preview. */
+export interface RenderPreviewResult {
+  /** Base64-encoded PNG image data. */
   imageData?: string;
   error?: string;
 }
 
-export interface XcodeRefreshSwiftUIPreviewParams extends WithTabIdentifier {
-  filePath: string;
+// ─── Documentation (1 tool) ────────────────────────────────────────────────
+
+export interface DocumentationSearchParams {
+  /** Search query (semantic search via Apple's MLX embeddings). */
+  query: string;
 }
-export interface XcodeRefreshSwiftUIPreviewResult {
-  success: boolean;
+export interface DocumentationSearchResult {
+  results: DocumentationEntry[];
+}
+export interface DocumentationEntry {
+  title: string;
+  url: string;
+  abstract?: string;
+  /** Source: "documentation" or "wwdc" (WWDC video transcripts). */
+  source?: string;
 }
 
-// ─── Simulator ─────────────────────────────────────────────────────────────
+// ─── Windowing (1 tool) ────────────────────────────────────────────────────
 
-export interface XcodeListSimulatorsParams {}
-export interface XcodeListSimulatorsResult {
-  simulators: Simulator[];
+export interface XcodeListWindowsResult {
+  /** Raw message string listing windows. */
+  message?: string;
+  windows?: XcodeWindow[];
 }
-export interface Simulator {
-  udid: string;
-  name: string;
-  runtime: string;
-  state: "Booted" | "Shutdown" | "Booting";
-  deviceType: string;
-}
-
-export interface XcodeRunOnSimulatorParams extends WithTabIdentifier {
-  simulatorUdid?: string;
-  deviceName?: string;
-  scheme?: string;
-}
-export interface XcodeRunOnSimulatorResult {
-  success: boolean;
-  simulatorUdid?: string;
-  error?: string;
+export interface XcodeWindow {
+  tabIdentifier: string;
+  workspacePath?: string;
+  title?: string;
 }
 
 // ─── Errors ────────────────────────────────────────────────────────────────

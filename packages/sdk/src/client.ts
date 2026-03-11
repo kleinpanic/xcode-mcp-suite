@@ -1,15 +1,15 @@
 /**
  * XcodeClient — typed wrapper for all 20 Xcode MCP tools.
  *
- * Connects to Xcode via a local or remote xcrun mcpbridge process.
+ * Connects to Xcode 26.3+ via local or remote xcrun mcpbridge.
  *
  * @example
  * ```ts
  * const client = new XcodeClient({ host: "collins-pro" });
  * await client.connect();
- * const { windows } = await client.listWindows();
- * const tabId = windows[0]["tab-identifier"];
- * const result = await client.buildProject({ "tab-identifier": tabId });
+ * const windows = await client.listWindows();
+ * const tabId = windows.windows?.[0]?.tabIdentifier ?? "windowtab1";
+ * const result = await client.buildProject({ tabIdentifier: tabId });
  * await client.disconnect();
  * ```
  *
@@ -22,46 +22,26 @@ import {
   XcodeConnectionError,
   XcodeToolError,
   XcodeBuildError,
-  type BuildProjectParams,
-  type BuildProjectResult,
-  type GetBuildLogParams,
-  type GetBuildLogResult,
-  type RunAllTestsParams,
-  type RunAllTestsResult,
-  type GetTestResultsParams,
-  type GetTestResultsResult,
-  type CleanBuildFolderParams,
-  type CleanBuildFolderResult,
-  type XcodeListWindowsParams,
+  type XcodeReadParams, type XcodeReadResult,
+  type XcodeWriteParams, type XcodeWriteResult,
+  type XcodeUpdateParams, type XcodeUpdateResult,
+  type XcodeGlobParams, type XcodeGlobResult,
+  type XcodeGrepParams, type XcodeGrepResult,
+  type XcodeLSParams, type XcodeLSResult,
+  type XcodeMakeDirParams, type XcodeMakeDirResult,
+  type XcodeRMParams, type XcodeRMResult,
+  type XcodeMVParams, type XcodeMVResult,
+  type BuildProjectParams, type BuildProjectResult,
+  type GetBuildLogParams, type GetBuildLogResult,
+  type RunAllTestsParams, type RunAllTestsResult,
+  type RunSomeTestsParams, type RunSomeTestsResult,
+  type GetTestListParams, type GetTestListResult,
+  type XcodeListNavigatorIssuesParams, type XcodeListNavigatorIssuesResult,
+  type XcodeRefreshCodeIssuesInFileParams, type XcodeRefreshCodeIssuesInFileResult,
+  type ExecuteSnippetParams, type ExecuteSnippetResult,
+  type RenderPreviewParams, type RenderPreviewResult,
+  type DocumentationSearchParams, type DocumentationSearchResult,
   type XcodeListWindowsResult,
-  type XcodeOpenFileParams,
-  type XcodeOpenFileResult,
-  type XcodeNavigateToSymbolParams,
-  type XcodeNavigateToSymbolResult,
-  type XcodeGetFileContentsParams,
-  type XcodeGetFileContentsResult,
-  type XcodeRefreshCodeIssuesInFileParams,
-  type XcodeRefreshCodeIssuesInFileResult,
-  type XcodeGetDiagnosticsParams,
-  type XcodeGetDiagnosticsResult,
-  type XcodeGetSymbolInfoParams,
-  type XcodeGetSymbolInfoResult,
-  type XcodeSearchDocumentationParams,
-  type XcodeSearchDocumentationResult,
-  type XcodeGetCompletionsParams,
-  type XcodeGetCompletionsResult,
-  type XcodeGetReferencesForSymbolParams,
-  type XcodeGetReferencesForSymbolResult,
-  type XcodeRunSwiftREPLParams,
-  type XcodeRunSwiftREPLResult,
-  type XcodeGetSwiftUIPreviewParams,
-  type XcodeGetSwiftUIPreviewResult,
-  type XcodeRefreshSwiftUIPreviewParams,
-  type XcodeRefreshSwiftUIPreviewResult,
-  type XcodeListSimulatorsParams,
-  type XcodeListSimulatorsResult,
-  type XcodeRunOnSimulatorParams,
-  type XcodeRunOnSimulatorResult,
 } from "./types.js";
 
 // ─── MCP JSON-RPC types ────────────────────────────────────────────────────
@@ -204,11 +184,18 @@ export class XcodeClient extends EventEmitter {
     });
   }
 
-  private async _tool<P, R>(name: string, params: P): Promise<R> {
+  /** Call any MCP tool by name with typed or untyped params. */
+  async callTool<R = unknown>(name: string, params: Record<string, unknown> = {}): Promise<R> {
     const result = await this._call("tools/call", { name, arguments: params });
-    // MCP tools/call returns { content: [{type:"text",text:"..."}] }
-    const content = (result as { content?: Array<{ type: string; text?: string }> })?.content;
-    const text = content?.find((c) => c.type === "text")?.text ?? "{}";
+    // MCP tools/call returns { content: [{type:"text",text:"..."}], structuredContent?: ... }
+    const raw = result as {
+      content?: Array<{ type: string; text?: string }>;
+      structuredContent?: unknown;
+    };
+    // Prefer structuredContent (Xcode 26.3 RC2+)
+    if (raw.structuredContent) return raw.structuredContent as R;
+    // Fall back to parsing content[0].text
+    const text = raw.content?.find((c) => c.type === "text")?.text ?? "{}";
     try {
       return JSON.parse(text) as R;
     } catch {
@@ -216,12 +203,59 @@ export class XcodeClient extends EventEmitter {
     }
   }
 
+  // ─── File Operations ──────────────────────────────────────────────────────
+
+  /** Read a file from the project (includes unsaved Xcode buffer changes). */
+  readFile(params: XcodeReadParams): Promise<XcodeReadResult> {
+    return this.callTool("XcodeRead", params as unknown as Record<string, unknown>);
+  }
+
+  /** Write full file content (creates or overwrites). */
+  writeFile(params: XcodeWriteParams): Promise<XcodeWriteResult> {
+    return this.callTool("XcodeWrite", params as unknown as Record<string, unknown>);
+  }
+
+  /** Apply a str_replace-style patch to a file. */
+  updateFile(params: XcodeUpdateParams): Promise<XcodeUpdateResult> {
+    return this.callTool("XcodeUpdate", params as unknown as Record<string, unknown>);
+  }
+
+  /** Find files by glob pattern (e.g. "**\/*.swift"). */
+  glob(params: XcodeGlobParams): Promise<XcodeGlobResult> {
+    return this.callTool("XcodeGlob", params as unknown as Record<string, unknown>);
+  }
+
+  /** Search file contents (grep). */
+  grep(params: XcodeGrepParams): Promise<XcodeGrepResult> {
+    return this.callTool("XcodeGrep", params as unknown as Record<string, unknown>);
+  }
+
+  /** List directory contents. */
+  ls(params: XcodeLSParams): Promise<XcodeLSResult> {
+    return this.callTool("XcodeLS", params as unknown as Record<string, unknown>);
+  }
+
+  /** Create a directory. */
+  mkdir(params: XcodeMakeDirParams): Promise<XcodeMakeDirResult> {
+    return this.callTool("XcodeMakeDir", params as unknown as Record<string, unknown>);
+  }
+
+  /** Remove a file or directory. */
+  rm(params: XcodeRMParams): Promise<XcodeRMResult> {
+    return this.callTool("XcodeRM", params as unknown as Record<string, unknown>);
+  }
+
+  /** Move or rename a file. */
+  mv(params: XcodeMVParams): Promise<XcodeMVResult> {
+    return this.callTool("XcodeMV", params as unknown as Record<string, unknown>);
+  }
+
   // ─── Build & Test ─────────────────────────────────────────────────────────
 
-  /** Build the active Xcode project/workspace. */
+  /** Build the active project. Throws XcodeBuildError on failure. */
   async buildProject(params: BuildProjectParams): Promise<BuildProjectResult> {
-    const result = await this._tool<BuildProjectParams, BuildProjectResult>("BuildProject", params);
-    if (!result.success && result.errors.length > 0) {
+    const result = await this.callTool<BuildProjectResult>("BuildProject", params as unknown as Record<string, unknown>);
+    if (result.errors?.length > 0) {
       throw new XcodeBuildError(
         `Build failed with ${result.errors.length} error(s)`,
         result.errors,
@@ -230,117 +264,69 @@ export class XcodeClient extends EventEmitter {
     return result;
   }
 
-  /** Fetch the build log, optionally filtered by severity. */
+  /** Fetch build log output, optionally filtered by severity. */
   getBuildLog(params: GetBuildLogParams): Promise<GetBuildLogResult> {
-    return this._tool("GetBuildLog", params);
+    return this.callTool("GetBuildLog", params as unknown as Record<string, unknown>);
   }
 
   /** Run all tests in the active scheme. */
   runAllTests(params: RunAllTestsParams): Promise<RunAllTestsResult> {
-    return this._tool("RunAllTests", params);
+    return this.callTool("RunAllTests", params as unknown as Record<string, unknown>);
   }
 
-  /** Get results from the most recent test run. */
-  getTestResults(params: GetTestResultsParams): Promise<GetTestResultsResult> {
-    return this._tool("GetTestResults", params);
+  /** Run specific tests by identifier (e.g. "MyAppTests/testLogin"). */
+  runSomeTests(params: RunSomeTestsParams): Promise<RunSomeTestsResult> {
+    return this.callTool("RunSomeTests", params as unknown as Record<string, unknown>);
   }
 
-  /** Clean the derived data / build folder. */
-  cleanBuildFolder(params: CleanBuildFolderParams): Promise<CleanBuildFolderResult> {
-    return this._tool("CleanBuildFolder", params);
+  /** List all available tests. */
+  getTestList(params: GetTestListParams): Promise<GetTestListResult> {
+    return this.callTool("GetTestList", params as unknown as Record<string, unknown>);
   }
 
-  // ─── Files & Navigation ───────────────────────────────────────────────────
+  // ─── Diagnostics ──────────────────────────────────────────────────────────
+
+  /** Get all navigator issues (errors, warnings) for the project. */
+  listNavigatorIssues(params: XcodeListNavigatorIssuesParams): Promise<XcodeListNavigatorIssuesResult> {
+    return this.callTool("XcodeListNavigatorIssues", params as unknown as Record<string, unknown>);
+  }
+
+  /** Refresh and return live diagnostics for a specific file. */
+  refreshCodeIssuesInFile(params: XcodeRefreshCodeIssuesInFileParams): Promise<XcodeRefreshCodeIssuesInFileResult> {
+    return this.callTool("XcodeRefreshCodeIssuesInFile", params as unknown as Record<string, unknown>);
+  }
+
+  // ─── Code Execution ───────────────────────────────────────────────────────
+
+  /** Execute a Swift code snippet in a REPL-like environment. */
+  executeSnippet(params: ExecuteSnippetParams): Promise<ExecuteSnippetResult> {
+    return this.callTool("ExecuteSnippet", params as unknown as Record<string, unknown>);
+  }
+
+  // ─── Preview ──────────────────────────────────────────────────────────────
+
+  /** Render a SwiftUI preview → returns base64 PNG image. */
+  renderPreview(params: RenderPreviewParams): Promise<RenderPreviewResult> {
+    return this.callTool("RenderPreview", params as unknown as Record<string, unknown>);
+  }
+
+  // ─── Documentation ────────────────────────────────────────────────────────
 
   /**
-   * List open Xcode windows. **Always call this first** to obtain tab-identifiers
+   * Search Apple developer documentation and WWDC video transcripts.
+   * Uses Apple's MLX-accelerated semantic search ("Squirrel MLX").
+   */
+  searchDocumentation(params: DocumentationSearchParams): Promise<DocumentationSearchResult> {
+    return this.callTool("DocumentationSearch", params as unknown as Record<string, unknown>);
+  }
+
+  // ─── Windowing ────────────────────────────────────────────────────────────
+
+  /**
+   * List open Xcode windows. **Always call this first** to obtain tabIdentifiers
    * required by all other tools.
    */
-  listWindows(params: XcodeListWindowsParams = {}): Promise<XcodeListWindowsResult> {
-    return this._tool("XcodeListWindows", params);
-  }
-
-  /** Open a file in Xcode, optionally jumping to a line. */
-  openFile(params: XcodeOpenFileParams): Promise<XcodeOpenFileResult> {
-    return this._tool("XcodeOpenFile", params);
-  }
-
-  /** Jump to a named symbol in the Xcode editor. */
-  navigateToSymbol(params: XcodeNavigateToSymbolParams): Promise<XcodeNavigateToSymbolResult> {
-    return this._tool("XcodeNavigateToSymbol", params);
-  }
-
-  /** Read a file's contents through Xcode's buffer (includes unsaved changes). */
-  getFileContents(params: XcodeGetFileContentsParams): Promise<XcodeGetFileContentsResult> {
-    return this._tool("XcodeGetFileContents", params);
-  }
-
-  /** Re-run diagnostics on a specific file and return current issues. */
-  refreshCodeIssuesInFile(
-    params: XcodeRefreshCodeIssuesInFileParams,
-  ): Promise<XcodeRefreshCodeIssuesInFileResult> {
-    return this._tool("XcodeRefreshCodeIssuesInFile", params);
-  }
-
-  // ─── Diagnostics & Intelligence ───────────────────────────────────────────
-
-  /** Get all current diagnostics, optionally scoped to a file. */
-  getDiagnostics(params: XcodeGetDiagnosticsParams): Promise<XcodeGetDiagnosticsResult> {
-    return this._tool("XcodeGetDiagnostics", params);
-  }
-
-  /** Look up symbol information (type, declaration, docs). */
-  getSymbolInfo(params: XcodeGetSymbolInfoParams): Promise<XcodeGetSymbolInfoResult> {
-    return this._tool("XcodeGetSymbolInfo", params);
-  }
-
-  /** Search Apple developer documentation. */
-  searchDocumentation(
-    params: XcodeSearchDocumentationParams,
-  ): Promise<XcodeSearchDocumentationResult> {
-    return this._tool("XcodeSearchDocumentation", params);
-  }
-
-  /** Get code completions at a cursor position. */
-  getCompletions(params: XcodeGetCompletionsParams): Promise<XcodeGetCompletionsResult> {
-    return this._tool("XcodeGetCompletions", params);
-  }
-
-  /** Find all references to a symbol across the project. */
-  getReferencesForSymbol(
-    params: XcodeGetReferencesForSymbolParams,
-  ): Promise<XcodeGetReferencesForSymbolResult> {
-    return this._tool("XcodeGetReferencesForSymbol", params);
-  }
-
-  // ─── Swift REPL & Previews ────────────────────────────────────────────────
-
-  /** Execute Swift code in the REPL. */
-  runSwiftREPL(params: XcodeRunSwiftREPLParams): Promise<XcodeRunSwiftREPLResult> {
-    return this._tool("XcodeRunSwiftREPL", params);
-  }
-
-  /** Render a SwiftUI preview and return a base64-encoded PNG. */
-  getSwiftUIPreview(params: XcodeGetSwiftUIPreviewParams): Promise<XcodeGetSwiftUIPreviewResult> {
-    return this._tool("XcodeGetSwiftUIPreview", params);
-  }
-
-  /** Refresh a SwiftUI preview for a file. */
-  refreshSwiftUIPreview(
-    params: XcodeRefreshSwiftUIPreviewParams,
-  ): Promise<XcodeRefreshSwiftUIPreviewResult> {
-    return this._tool("XcodeRefreshSwiftUIPreview", params);
-  }
-
-  // ─── Simulator ────────────────────────────────────────────────────────────
-
-  /** List available simulators and their boot state. */
-  listSimulators(params: XcodeListSimulatorsParams = {}): Promise<XcodeListSimulatorsResult> {
-    return this._tool("XcodeListSimulators", params);
-  }
-
-  /** Build and run the app on a simulator. */
-  runOnSimulator(params: XcodeRunOnSimulatorParams): Promise<XcodeRunOnSimulatorResult> {
-    return this._tool("XcodeRunOnSimulator", params);
+  listWindows(): Promise<XcodeListWindowsResult> {
+    return this.callTool("XcodeListWindows", {});
   }
 }

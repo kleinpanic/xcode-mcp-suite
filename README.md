@@ -58,7 +58,7 @@ npm install @kleinpanic/xcode-mcp-sdk
 import { withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
 
 await withXcodeSession({ host: "collins-pro" }, async (session) => {
-  // tab-identifier is managed automatically
+  // tabIdentifier is managed automatically
   const result = await session.buildProject();
   console.log(`Build: ${result.success ? "✓" : "✗"}`);
 
@@ -88,13 +88,13 @@ Set `XCODE_HOST=collins-pro` in your environment and it connects via SSH automat
 
 | Category | Tools |
 |----------|-------|
-| **Build & Test** | `BuildProject` · `GetBuildLog` · `RunAllTests` · `GetTestResults` · `CleanBuildFolder` |
-| **Files & Navigation** | `XcodeListWindows` · `XcodeOpenFile` · `XcodeNavigateToSymbol` · `XcodeGetFileContents` · `XcodeRefreshCodeIssuesInFile` |
-| **Diagnostics & Intelligence** | `XcodeGetDiagnostics` · `XcodeGetSymbolInfo` · `XcodeSearchDocumentation` · `XcodeGetCompletions` · `XcodeGetReferencesForSymbol` |
-| **Swift REPL & Previews** | `XcodeRunSwiftREPL` · `XcodeGetSwiftUIPreview` · `XcodeRefreshSwiftUIPreview` |
-| **Simulator** | `XcodeListSimulators` · `XcodeRunOnSimulator` |
-
-Full parameter/return type docs: [docs/tools-reference.md](docs/tools-reference.md)
+| **File Operations** | `XcodeRead` · `XcodeWrite` · `XcodeUpdate` · `XcodeGlob` · `XcodeGrep` · `XcodeLS` · `XcodeMakeDir` · `XcodeRM` · `XcodeMV` |
+| **Build & Test** | `BuildProject` · `GetBuildLog` · `RunAllTests` · `RunSomeTests` · `GetTestList` |
+| **Diagnostics** | `XcodeListNavigatorIssues` · `XcodeRefreshCodeIssuesInFile` |
+| **Code Execution** | `ExecuteSnippet` |
+| **Preview** | `RenderPreview` |
+| **Documentation** | `DocumentationSearch` |
+| **Windowing** | `XcodeListWindows` ⭐ *(call first)* |
 
 ---
 
@@ -108,23 +108,23 @@ import { XcodeClient } from "@kleinpanic/xcode-mcp-sdk";
 const client = new XcodeClient({ host: "collins-pro" });
 await client.connect();
 
-// Always get tab-identifier first
+// Always get tabIdentifier first
 const { windows } = await client.listWindows();
-const tabId = windows[0]["tab-identifier"];
+const tabId = windows[0]["tabIdentifier"];
 
 // Build
-const build = await client.buildProject({ "tab-identifier": tabId });
+const build = await client.buildProject({ "tabIdentifier": tabId });
 
 // Swift REPL
 const repl = await client.runSwiftREPL({
-  "tab-identifier": tabId,
+  "tabIdentifier": tabId,
   code: 'let arr = [1,2,3].map { $0 * 2 }; print(arr)',
 });
 console.log(repl.output); // [2, 4, 6]
 
 // SwiftUI preview → base64 PNG
 const preview = await client.getSwiftUIPreview({
-  "tab-identifier": tabId,
+  "tabIdentifier": tabId,
   filePath: "Sources/Views/ContentView.swift",
 });
 
@@ -143,7 +143,7 @@ const session = new XcodeSession({
 
 await session.connect();
 
-// No tab-identifier needed — managed automatically
+// No tabIdentifier needed — managed automatically
 const result = await session.buildProject({ scheme: "MyApp" });
 const refs = await session.getReferencesForSymbol({ symbol: "ContentView" });
 const info = await session.getSymbolInfo({ symbol: "body" });
@@ -213,7 +213,7 @@ Add this to your agent's bootstrap file:
 
 Xcode MCP tools are available when XCODE_HOST is set.
 Use `xcmcp doctor` to verify connectivity before starting iOS/macOS work.
-Always call XcodeListWindows first to get a tab-identifier.
+Always call XcodeListWindows first to get a tabIdentifier.
 See: https://github.com/kleinpanic/xcode-mcp-suite
 ```
 
@@ -221,7 +221,7 @@ See: https://github.com/kleinpanic/xcode-mcp-suite
 
 ```
 1. xcmcp doctor --host $XCODE_HOST          # preflight
-2. xcmcp windows --host $XCODE_HOST         # get tab-identifier
+2. xcmcp windows --host $XCODE_HOST         # get tabIdentifier
 3. xcmcp build --host $XCODE_HOST           # build → fix errors
 4. xcmcp test --host $XCODE_HOST            # run tests
 5. xcmcp preview --file ContentView.swift   # visual audit

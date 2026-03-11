@@ -1,56 +1,45 @@
 /**
- * XcodeSession — manages the tab-identifier lifecycle automatically.
+ * XcodeSession — managed session with automatic tabIdentifier handling.
  *
  * Wraps XcodeClient, auto-calls listWindows on first use, and exposes
- * all tool methods with tab-identifier pre-filled.
+ * all 20 tool methods with tabIdentifier pre-filled.
  */
 
 import { XcodeClient, type XcodeClientOptions } from "./client.js";
 import { XcodeConnectionError } from "./types.js";
 import type {
-  BuildProjectParams,
-  BuildProjectResult,
-  GetBuildLogParams,
-  GetBuildLogResult,
-  RunAllTestsParams,
-  RunAllTestsResult,
-  GetTestResultsResult,
-  CleanBuildFolderResult,
   XcodeWindow,
-  XcodeOpenFileParams,
-  XcodeOpenFileResult,
-  XcodeNavigateToSymbolParams,
-  XcodeNavigateToSymbolResult,
-  XcodeGetFileContentsParams,
-  XcodeGetFileContentsResult,
-  XcodeGetDiagnosticsParams,
-  XcodeGetDiagnosticsResult,
-  XcodeGetSymbolInfoParams,
-  XcodeGetSymbolInfoResult,
-  XcodeSearchDocumentationParams,
-  XcodeSearchDocumentationResult,
-  XcodeGetCompletionsParams,
-  XcodeGetCompletionsResult,
-  XcodeGetReferencesForSymbolParams,
-  XcodeGetReferencesForSymbolResult,
-  XcodeRunSwiftREPLParams,
-  XcodeRunSwiftREPLResult,
-  XcodeGetSwiftUIPreviewParams,
-  XcodeGetSwiftUIPreviewResult,
-  XcodeRefreshSwiftUIPreviewResult,
-  XcodeListSimulatorsResult,
-  XcodeRunOnSimulatorParams,
-  XcodeRunOnSimulatorResult,
+  XcodeReadResult,
+  XcodeWriteResult,
+  XcodeUpdateResult,
+  XcodeGlobResult,
+  XcodeGrepResult,
+  XcodeLSResult,
+  XcodeMakeDirResult,
+  XcodeRMResult,
+  XcodeMVResult,
+  BuildProjectResult,
+  GetBuildLogResult,
+  RunAllTestsResult,
+  RunSomeTestsResult,
+  GetTestListResult,
+  XcodeListNavigatorIssuesResult,
+  XcodeRefreshCodeIssuesInFileResult,
+  ExecuteSnippetResult,
+  RenderPreviewResult,
+  DocumentationSearchParams,
+  DocumentationSearchResult,
+  XcodeListWindowsResult,
 } from "./types.js";
 
 export interface XcodeSessionOptions extends XcodeClientOptions {
-  /** Prefer this window by project/workspace path. Falls back to first window. */
+  /** Prefer this window by workspace path match. Falls back to first window. */
   projectPath?: string;
 }
 
 export class XcodeSession {
   readonly client: XcodeClient;
-  private _window: XcodeWindow | null = null;
+  private _tabId: string | null = null;
   private readonly opts: XcodeSessionOptions;
 
   constructor(opts: XcodeSessionOptions = {}) {
@@ -58,111 +47,142 @@ export class XcodeSession {
     this.client = new XcodeClient(opts);
   }
 
-  async connect(): Promise<XcodeWindow> {
+  async connect(): Promise<string> {
     await this.client.connect();
-    return this.window();
+    return this.tabId();
   }
 
-  async window(): Promise<XcodeWindow> {
-    if (this._window) return this._window;
-    const { windows } = await this.client.listWindows();
-    if (windows.length === 0) {
+  async tabId(): Promise<string> {
+    if (this._tabId) return this._tabId;
+    const result = await this.client.listWindows();
+    // Parse windows from result (format varies: message string or windows array)
+    const windows = result.windows ?? this._parseWindowsFromMessage(result.message);
+    if (!windows || windows.length === 0) {
       throw new XcodeConnectionError(
         "No Xcode windows found. Open a project in Xcode on the target host.",
       );
     }
-    this._window = this.opts.projectPath
-      ? (windows.find(
-          (w) =>
-            w.projectPath?.includes(this.opts.projectPath!) ||
-            w.workspacePath?.includes(this.opts.projectPath!),
-        ) ?? windows[0]!)
+    const win = this.opts.projectPath
+      ? (windows.find((w) => w.workspacePath?.includes(this.opts.projectPath!)) ?? windows[0]!)
       : windows[0]!;
-    return this._window;
+    this._tabId = win.tabIdentifier;
+    return this._tabId;
   }
 
-  private async tabId(): Promise<string> {
-    return (await this.window())["tab-identifier"];
+  private _parseWindowsFromMessage(msg?: string): XcodeWindow[] {
+    if (!msg) return [];
+    // Parse "* tabIdentifier: windowtab1, workspacePath: /path/to/project" format
+    const windows: XcodeWindow[] = [];
+    const lines = msg.split("\n").filter((l) => l.includes("tabIdentifier"));
+    for (const line of lines) {
+      const tabMatch = line.match(/tabIdentifier:\s*(\S+)/);
+      const pathMatch = line.match(/workspacePath:\s*(\S+)/);
+      if (tabMatch?.[1]) {
+        windows.push({
+          tabIdentifier: tabMatch[1],
+          workspacePath: pathMatch?.[1],
+        });
+      }
+    }
+    return windows;
   }
 
   disconnect(): void {
     this.client.disconnect();
   }
 
-  // ── Convenience wrappers (tab-identifier pre-filled) ────────────────────
+  // ── File Operations ─────────────────────────────────────────────────────
 
-  async buildProject(params: Omit<BuildProjectParams, "tab-identifier"> = {}): Promise<BuildProjectResult> {
-    return this.client.buildProject({ ...params, "tab-identifier": await this.tabId() });
+  async readFile(filePath: string): Promise<XcodeReadResult> {
+    return this.client.readFile({ tabIdentifier: await this.tabId(), filePath });
   }
 
-  async getBuildLog(params: Omit<GetBuildLogParams, "tab-identifier"> = {}): Promise<GetBuildLogResult> {
-    return this.client.getBuildLog({ ...params, "tab-identifier": await this.tabId() });
+  async writeFile(filePath: string, content: string): Promise<XcodeWriteResult> {
+    return this.client.writeFile({ tabIdentifier: await this.tabId(), filePath, content });
   }
 
-  async runAllTests(params: Omit<RunAllTestsParams, "tab-identifier"> = {}): Promise<RunAllTestsResult> {
-    return this.client.runAllTests({ ...params, "tab-identifier": await this.tabId() });
+  async updateFile(filePath: string, oldText: string, newText: string): Promise<XcodeUpdateResult> {
+    return this.client.updateFile({ tabIdentifier: await this.tabId(), filePath, oldText, newText });
   }
 
-  async getTestResults(): Promise<GetTestResultsResult> {
-    return this.client.getTestResults({ "tab-identifier": await this.tabId() });
+  async glob(pattern: string): Promise<XcodeGlobResult> {
+    return this.client.glob({ tabIdentifier: await this.tabId(), pattern });
   }
 
-  async cleanBuildFolder(): Promise<CleanBuildFolderResult> {
-    return this.client.cleanBuildFolder({ "tab-identifier": await this.tabId() });
+  async grep(pattern: string, include?: string): Promise<XcodeGrepResult> {
+    return this.client.grep({ tabIdentifier: await this.tabId(), pattern, include });
   }
 
-  async openFile(params: Omit<XcodeOpenFileParams, "tab-identifier">): Promise<XcodeOpenFileResult> {
-    return this.client.openFile({ ...params, "tab-identifier": await this.tabId() });
+  async ls(path: string): Promise<XcodeLSResult> {
+    return this.client.ls({ tabIdentifier: await this.tabId(), path });
   }
 
-  async navigateToSymbol(params: Omit<XcodeNavigateToSymbolParams, "tab-identifier">): Promise<XcodeNavigateToSymbolResult> {
-    return this.client.navigateToSymbol({ ...params, "tab-identifier": await this.tabId() });
+  async mkdir(path: string): Promise<XcodeMakeDirResult> {
+    return this.client.mkdir({ tabIdentifier: await this.tabId(), path });
   }
 
-  async getFileContents(params: Omit<XcodeGetFileContentsParams, "tab-identifier">): Promise<XcodeGetFileContentsResult> {
-    return this.client.getFileContents({ ...params, "tab-identifier": await this.tabId() });
+  async rm(path: string): Promise<XcodeRMResult> {
+    return this.client.rm({ tabIdentifier: await this.tabId(), path });
   }
 
-  async getDiagnostics(filePath?: string): Promise<XcodeGetDiagnosticsResult> {
-    const params: XcodeGetDiagnosticsParams = { "tab-identifier": await this.tabId() };
-    if (filePath !== undefined) params.filePath = filePath;
-    return this.client.getDiagnostics(params);
+  async mv(from: string, to: string): Promise<XcodeMVResult> {
+    return this.client.mv({ tabIdentifier: await this.tabId(), from, to });
   }
 
-  async getSymbolInfo(params: Omit<XcodeGetSymbolInfoParams, "tab-identifier">): Promise<XcodeGetSymbolInfoResult> {
-    return this.client.getSymbolInfo({ ...params, "tab-identifier": await this.tabId() });
+  // ── Build & Test ────────────────────────────────────────────────────────
+
+  async buildProject(params: { scheme?: string; configuration?: string } = {}): Promise<BuildProjectResult> {
+    return this.client.buildProject({ ...params, tabIdentifier: await this.tabId() });
   }
 
-  async searchDocumentation(params: XcodeSearchDocumentationParams): Promise<XcodeSearchDocumentationResult> {
-    return this.client.searchDocumentation(params);
+  async getBuildLog(params: { severity?: "error" | "warning" | "all" } = {}): Promise<GetBuildLogResult> {
+    return this.client.getBuildLog({ ...params, tabIdentifier: await this.tabId() });
   }
 
-  async getCompletions(params: Omit<XcodeGetCompletionsParams, "tab-identifier">): Promise<XcodeGetCompletionsResult> {
-    return this.client.getCompletions({ ...params, "tab-identifier": await this.tabId() });
+  async runAllTests(params: { scheme?: string } = {}): Promise<RunAllTestsResult> {
+    return this.client.runAllTests({ ...params, tabIdentifier: await this.tabId() });
   }
 
-  async getReferencesForSymbol(params: Omit<XcodeGetReferencesForSymbolParams, "tab-identifier">): Promise<XcodeGetReferencesForSymbolResult> {
-    return this.client.getReferencesForSymbol({ ...params, "tab-identifier": await this.tabId() });
+  async runSomeTests(tests: string[], scheme?: string): Promise<RunSomeTestsResult> {
+    return this.client.runSomeTests({ tests, scheme, tabIdentifier: await this.tabId() });
   }
 
-  async runSwiftREPL(params: Omit<XcodeRunSwiftREPLParams, "tab-identifier">): Promise<XcodeRunSwiftREPLResult> {
-    return this.client.runSwiftREPL({ ...params, "tab-identifier": await this.tabId() });
+  async getTestList(scheme?: string): Promise<GetTestListResult> {
+    return this.client.getTestList({ tabIdentifier: await this.tabId(), scheme });
   }
 
-  async getSwiftUIPreview(params: Omit<XcodeGetSwiftUIPreviewParams, "tab-identifier">): Promise<XcodeGetSwiftUIPreviewResult> {
-    return this.client.getSwiftUIPreview({ ...params, "tab-identifier": await this.tabId() });
+  // ── Diagnostics ─────────────────────────────────────────────────────────
+
+  async listNavigatorIssues(): Promise<XcodeListNavigatorIssuesResult> {
+    return this.client.listNavigatorIssues({ tabIdentifier: await this.tabId() });
   }
 
-  async refreshSwiftUIPreview(filePath: string): Promise<XcodeRefreshSwiftUIPreviewResult> {
-    return this.client.refreshSwiftUIPreview({ "tab-identifier": await this.tabId(), filePath });
+  async refreshCodeIssuesInFile(filePath: string): Promise<XcodeRefreshCodeIssuesInFileResult> {
+    return this.client.refreshCodeIssuesInFile({ tabIdentifier: await this.tabId(), filePath });
   }
 
-  async listSimulators(): Promise<XcodeListSimulatorsResult> {
-    return this.client.listSimulators();
+  // ── Code Execution ──────────────────────────────────────────────────────
+
+  async executeSnippet(code: string, timeout?: number): Promise<ExecuteSnippetResult> {
+    return this.client.executeSnippet({ tabIdentifier: await this.tabId(), code, timeout });
   }
 
-  async runOnSimulator(params: Omit<XcodeRunOnSimulatorParams, "tab-identifier"> = {}): Promise<XcodeRunOnSimulatorResult> {
-    return this.client.runOnSimulator({ ...params, "tab-identifier": await this.tabId() });
+  // ── Preview ─────────────────────────────────────────────────────────────
+
+  async renderPreview(filePath: string, previewName?: string): Promise<RenderPreviewResult> {
+    return this.client.renderPreview({ tabIdentifier: await this.tabId(), filePath, previewName });
+  }
+
+  // ── Documentation (no tabIdentifier needed) ─────────────────────────────
+
+  async searchDocumentation(query: string): Promise<DocumentationSearchResult> {
+    return this.client.searchDocumentation({ query });
+  }
+
+  // ── Windowing ───────────────────────────────────────────────────────────
+
+  async listWindows(): Promise<XcodeListWindowsResult> {
+    return this.client.listWindows();
   }
 }
 
