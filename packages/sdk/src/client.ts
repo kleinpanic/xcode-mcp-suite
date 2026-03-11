@@ -122,7 +122,6 @@ export class XcodeClient extends EventEmitter {
       clientInfo: { name: "xcode-mcp-sdk", version: "0.1.0" },
       capabilities: {},
     });
-    await this._call("notifications/initialized", {});
   }
 
   disconnect(): void {
