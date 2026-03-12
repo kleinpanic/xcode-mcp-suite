@@ -54,9 +54,8 @@ export class XcodeSession {
   async tabId(): Promise<string> {
     if (this._tabId) return this._tabId;
     const result = await this.client.listWindows();
-    // Parse windows from result (format varies: message string or windows array)
-    const windows = result.windows ?? this._parseWindowsFromMessage(result.message);
-    if (!windows || windows.length === 0) {
+    const windows = result.windows ?? [];
+    if (windows.length === 0) {
       throw new XcodeConnectionError(
         "No Xcode windows found. Open a project in Xcode on the target host.",
       );
@@ -68,22 +67,6 @@ export class XcodeSession {
     return this._tabId;
   }
 
-  private _parseWindowsFromMessage(msg?: string): XcodeWindow[] {
-    if (!msg) return [];
-    // Parse "* tabIdentifier: windowtab1, workspacePath: /path/to/project" format
-    const windows: XcodeWindow[] = [];
-    const lines = msg.split("\n").filter((l) => l.includes("tabIdentifier"));
-    for (const line of lines) {
-      const tabMatch = line.match(/tabIdentifier:\s*(\S+)/);
-      const pathMatch = line.match(/workspacePath:\s*(\S+)/);
-      if (tabMatch?.[1]) {
-        const win: XcodeWindow = { tabIdentifier: tabMatch[1] };
-        if (pathMatch?.[1]) win.workspacePath = pathMatch[1];
-        windows.push(win);
-      }
-    }
-    return windows;
-  }
 
   disconnect(): void {
     this.client.disconnect();

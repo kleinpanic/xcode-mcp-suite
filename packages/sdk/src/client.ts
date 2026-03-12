@@ -42,6 +42,7 @@ import {
   type RenderPreviewParams, type RenderPreviewResult,
   type DocumentationSearchParams, type DocumentationSearchResult,
   type XcodeListWindowsResult,
+  type XcodeWindow,
 } from "./types.js";
 
 // ─── MCP JSON-RPC types ────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ export class XcodeClient extends EventEmitter {
     // Xcode 26.3 mcpbridge silently ignores tools/list and tools/call
     // until this notification is received (confirmed empirically).
     this._notify("notifications/initialized", {});
-    await new Promise<void>((r) => setTimeout(r, 150));
+    await new Promise<void>((r) => setTimeout(r, 2000));
   }
 
   disconnect(): void {
@@ -334,10 +335,44 @@ export class XcodeClient extends EventEmitter {
   // ─── Windowing ────────────────────────────────────────────────────────────
 
   /**
-   * List open Xcode windows. **Always call this first** to obtain tabIdentifiers
-   * required by all other tools.
+   * List open Xcode windows and their tabIdentifiers.
+   *
+   * Xcode 26.3 mcpbridge (v24582) does not implement XcodeListWindows.
+   * We probe via XcodeLS with an empty tabIdentifier — Xcode replies with
+   * an error that enumerates all open windows:
+   *   "* tabIdentifier: windowtab1, workspacePath: /path/to/project"
    */
-  listWindows(): Promise<XcodeListWindowsResult> {
-    return this.callTool("XcodeListWindows", {});
+  async listWindows(): Promise<XcodeListWindowsResult> {
+    // Probe: intentionally omit tabIdentifier so Xcode returns the window list.
+    let raw: unknown;
+    try {
+      raw = await this.callTool("XcodeLS", { tabIdentifier: "", path: "/" });
+    } catch {
+      // ignore — we only need the error message content
+    }
+    // If a future Xcode returns structured windows, use them.
+    const asWindows = raw as { windows?: XcodeWindow[] } | undefined;
+    if (asWindows?.windows && asWindows.windows.length > 0) {
+      return { windows: asWindows.windows };
+    }
+    // Parse the tabIdentifier list from the error message.
+    const errText = typeof raw === "string" ? raw
+      : (raw as { content?: Array<{ text?: string }> } | undefined)
+        ?.content?.[0]?.text ?? "";
+    return { windows: this._parseWindowsFromMessage(errText) };
+  } /** @internal Extract window list from Xcode tabIdentifier error messages. */
+  private _parseWindowsFromMessage(msg: string): XcodeWindow[] {
+    const windows: XcodeWindow[] = [];
+    const lines = msg.split("\n").filter((l) => l.includes("tabIdentifier:"));
+    for (const line of lines) {
+      const tabMatch = line.match(/tabIdentifier:\s*(\S+)/);
+      const pathMatch = line.match(/workspacePath:\s*(\S+)/);
+      if (tabMatch?.[1]) {
+        const win: XcodeWindow = { tabIdentifier: tabMatch[1] };
+        if (pathMatch?.[1]) win.workspacePath = pathMatch[1];
+        windows.push(win);
+      }
+    }
+    return windows;
   }
 }
