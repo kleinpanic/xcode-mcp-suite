@@ -365,7 +365,7 @@ export class XcodeClient extends EventEmitter {
     const windows: XcodeWindow[] = [];
     const lines = msg.split("\n").filter((l) => l.includes("tabIdentifier:"));
     for (const line of lines) {
-      const tabMatch = line.match(/tabIdentifier:\s*(\S+)/);
+      const tabMatch = line.match(/tabIdentifier:\s*([^\s,]+)/);
       const pathMatch = line.match(/workspacePath:\s*(\S+)/);
       if (tabMatch?.[1]) {
         const win: XcodeWindow = { tabIdentifier: tabMatch[1] };
