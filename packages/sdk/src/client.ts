@@ -346,7 +346,7 @@ export class XcodeClient extends EventEmitter {
     // Probe: intentionally omit tabIdentifier so Xcode returns the window list.
     let raw: unknown;
     try {
-      raw = await this.callTool("XcodeLS", { directoryPath: "/" });
+      raw = await this.callTool("XcodeLS", { tabIdentifier: "", path: "/" });
     } catch {
       // ignore — we only need the error message content
     }
