@@ -343,10 +343,10 @@ export class XcodeClient extends EventEmitter {
    *   "* tabIdentifier: windowtab1, workspacePath: /path/to/project"
    */
   async listWindows(): Promise<XcodeListWindowsResult> {
-    // Probe: intentionally omit tabIdentifier so Xcode returns the window list.
+    // Probe: BuildProject with sentinel tabIdentifier triggers window-list error (XcodeLS with empty tabId times out).
     let raw: unknown;
     try {
-      raw = await this.callTool("XcodeLS", { tabIdentifier: "", path: "/" });
+      raw = await this.callTool("BuildProject", { tabIdentifier: "__probe__" });
     } catch {
       // ignore — we only need the error message content
     }
