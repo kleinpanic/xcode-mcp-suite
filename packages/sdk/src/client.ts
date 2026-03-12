@@ -116,12 +116,17 @@ export class XcodeClient extends EventEmitter {
       this._rejectAll(new XcodeConnectionError(`xcrun mcpbridge exited with code ${code}`));
     });
 
-    // Send MCP initialize
+    // MCP handshake: initialize then notifications/initialized
     await this._call("initialize", {
       protocolVersion: "2024-11-05",
       clientInfo: { name: "xcode-mcp-sdk", version: "0.1.0" },
       capabilities: {},
     });
+    // Required: client must notify server it is ready before any tool calls.
+    // Xcode 26.3 mcpbridge silently ignores tools/list and tools/call
+    // until this notification is received (confirmed empirically).
+    this._notify("notifications/initialized", {});
+    await new Promise<void>((r) => setTimeout(r, 150));
   }
 
   disconnect(): void {
@@ -181,6 +186,12 @@ export class XcodeClient extends EventEmitter {
       this.pending.set(id, { resolve, reject, timer });
       this.proc!.stdin.write(JSON.stringify(req) + "\n");
     });
+  }
+
+  /** Send a JSON-RPC notification (no id, no response expected). */
+  private _notify(method: string, params?: unknown): void {
+    if (!this.proc) return;
+    this.proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
   }
 
   /** Call any MCP tool by name with typed or untyped params. */
