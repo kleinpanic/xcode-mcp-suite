@@ -100,34 +100,56 @@ export class XcodeClient extends EventEmitter {
 
   async connect(): Promise<void> {
     if (this.proc) return;
+    if (this.opts.host.startsWith("-")) {
+      // Would be parsed by ssh as an option (e.g. -oProxyCommand=...).
+      throw new XcodeConnectionError(`Invalid host: ${this.opts.host}`);
+    }
 
     const [cmd, args] = this.opts.host
       ? ["ssh", [...this.opts.sshArgs, "-T", this.opts.host, "xcrun", "mcpbridge"]]
       : ["xcrun", ["mcpbridge"]];
 
-    this.proc = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    this.proc = proc;
 
+    // Without these listeners a missing binary (ENOENT) or a write to a dead
+    // bridge (EPIPE) is an unhandled 'error' event and crashes the host process.
+    proc.on("error", (err) => {
+      if (this.proc === proc) this.proc = null;
+      this._rejectAll(new XcodeConnectionError(`Failed to start ${cmd}: ${err.message}`, err));
+    });
+    proc.stdin.on("error", () => {
+      // Surfaced via the 'exit' / 'error' handlers.
+    });
     this.proc.stdout.setEncoding("utf8");
     this.proc.stdout.on("data", (chunk: string) => this._onData(chunk));
     this.proc.stderr.on("data", (chunk: Buffer) =>
       this.emit("stderr", chunk.toString()),
     );
     this.proc.on("exit", (code) => {
+      if (this.proc === proc) this.proc = null;
       this.emit("exit", code);
       this._rejectAll(new XcodeConnectionError(`xcrun mcpbridge exited with code ${code}`));
     });
 
-    // MCP handshake: initialize then notifications/initialized
-    await this._call("initialize", {
-      protocolVersion: "2024-11-05",
-      clientInfo: { name: "xcode-mcp-sdk", version: "0.1.0" },
-      capabilities: {},
-    });
-    // Required: client must notify server it is ready before any tool calls.
-    // Xcode 26.3 mcpbridge silently ignores tools/list and tools/call
-    // until this notification is received (confirmed empirically).
-    this._notify("notifications/initialized", {});
-    await new Promise<void>((r) => setTimeout(r, 2000));
+    try {
+      // MCP handshake: initialize then notifications/initialized
+      await this._call("initialize", {
+        protocolVersion: "2024-11-05",
+        clientInfo: { name: "xcode-mcp-sdk", version: "0.1.0" },
+        capabilities: {},
+      });
+      // Required: client must notify server it is ready before any tool calls.
+      // Xcode 26.3 mcpbridge silently ignores tools/list and tools/call
+      // until this notification is received (confirmed empirically).
+      this._notify("notifications/initialized", {});
+      await new Promise<void>((r) => setTimeout(r, 2000));
+    } catch (err) {
+      // Don't leave a half-initialised bridge running (it would also make the
+      // next connect() a silent no-op).
+      this.disconnect();
+      throw err;
+    }
   }
 
   disconnect(): void {
@@ -180,10 +202,10 @@ export class XcodeClient extends EventEmitter {
     const id = this.seq++;
     const req: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new XcodeToolError(`Timeout calling ${method}`, method)),
-        this.opts.timeout,
-      );
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new XcodeToolError(`Timeout calling ${method}`, method));
+      }, this.opts.timeout);
       this.pending.set(id, { resolve, reject, timer });
       this.proc!.stdin.write(JSON.stringify(req) + "\n");
     });
@@ -197,16 +219,28 @@ export class XcodeClient extends EventEmitter {
 
   /** Call any MCP tool by name with typed or untyped params. */
   async callTool<R = unknown>(name: string, params: Record<string, unknown> = {}): Promise<R> {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new XcodeToolError("Tool name must be a non-empty string", String(name));
+    }
+    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      throw new XcodeToolError(`Arguments for ${name} must be a JSON object`, name);
+    }
     const result = await this._call("tools/call", { name, arguments: params });
-    // MCP tools/call returns { content: [{type:"text",text:"..."}], structuredContent?: ... }
-    const raw = result as {
+    // MCP tools/call returns { content: [{type:"text",text:"..."}], structuredContent?: ..., isError?: boolean }
+    const raw = (result ?? {}) as {
       content?: Array<{ type: string; text?: string }>;
       structuredContent?: unknown;
+      isError?: boolean;
     };
+    const text = raw.content?.find((c) => c.type === "text")?.text;
+    // Tool-level failures are reported in-band, not as JSON-RPC errors.
+    if (raw.isError) {
+      throw new XcodeToolError(text ?? `${name} failed`, name, raw);
+    }
     // Prefer structuredContent (Xcode 26.3 RC2+)
     if (raw.structuredContent) return raw.structuredContent as R;
     // Fall back to parsing content[0].text
-    const text = raw.content?.find((c) => c.type === "text")?.text ?? "{}";
+    if (text === undefined) return {} as R;
     try {
       return JSON.parse(text) as R;
     } catch {
@@ -347,8 +381,11 @@ export class XcodeClient extends EventEmitter {
     let raw: unknown;
     try {
       raw = await this.callTool("BuildProject", { tabIdentifier: "__probe__" });
-    } catch {
-      // ignore — we only need the error message content
+    } catch (err) {
+      // The probe is expected to fail; the window list is in the error text.
+      // Anything else (not connected, bridge died, timeout) must propagate.
+      if (!(err instanceof XcodeToolError) || err.message.startsWith("Timeout calling")) throw err;
+      raw = err.message;
     }
     // If a future Xcode returns structured windows, use them.
     const asWindows = raw as { windows?: XcodeWindow[] } | undefined;
@@ -359,7 +396,8 @@ export class XcodeClient extends EventEmitter {
     const errText = typeof raw === "string" ? raw
       : (raw as { content?: Array<{ text?: string }> } | undefined)
         ?.content?.[0]?.text ?? "";
-    return { windows: this._parseWindowsFromMessage(errText) };
+    const windows = this._parseWindowsFromMessage(errText);
+    return windows.length > 0 || !errText ? { windows } : { windows, message: errText };
   } /** @internal Extract window list from Xcode tabIdentifier error messages. */
   private _parseWindowsFromMessage(msg: string): XcodeWindow[] {
     const windows: XcodeWindow[] = [];

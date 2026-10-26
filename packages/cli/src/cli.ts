@@ -4,9 +4,11 @@
  * @see https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, spawn, type ExecFileSyncOptions } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { XcodeClient, withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
+import { assertSafeHost, commandFor } from "./shell.js";
 
 const VERSION = "0.2.0";
 const APPLE_DOCS_URL =
@@ -26,12 +28,17 @@ const opt = (name: string): string | undefined => {
   return i !== -1 && i + 1 < args.length ? args[i + 1] : undefined;
 };
 
+/** Flags that take no value (must not swallow the following positional). */
+const BOOLEAN_FLAGS = new Set(["--json", "--all", "--version", "--help"]);
+
 /** Get positional args (after command), stripping --key value pairs. */
 function positionalArgs(startIndex = 1): string[] {
   const result: string[] = [];
   let i = startIndex;
   while (i < args.length) {
-    if (args[i]!.startsWith("--")) {
+    if (BOOLEAN_FLAGS.has(args[i]!)) {
+      i += 1;
+    } else if (args[i]!.startsWith("--")) {
       i += 2; // skip --key value
     } else {
       result.push(args[i]!);
@@ -42,7 +49,17 @@ function positionalArgs(startIndex = 1): string[] {
 }
 
 function host(): string {
-  return opt("host") ?? process.env["XCODE_HOST"] ?? "";
+  const h = opt("host") ?? process.env["XCODE_HOST"] ?? "";
+  if (h) {
+    try { assertSafeHost(h); } catch (e) { die((e as Error).message); }
+  }
+  return h;
+}
+
+/** Run argv locally, or on host via ssh — never through a local shell. */
+function run(h: string, argv: string[], options: ExecFileSyncOptions = { stdio: "pipe" }, sshArgs: string[] = []) {
+  const [file, fileArgs] = commandFor(h, argv, sshArgs);
+  return execFileSync(file, fileArgs, options);
 }
 
 function die(msg: string, code = 1): never {
@@ -147,7 +164,7 @@ async function cmdDoctor() {
   // 1. SSH reachability (remote only)
   if (h) {
     try {
-      execSync(`ssh -T -o ConnectTimeout=5 ${h} echo ok`, { stdio: "pipe" });
+      run(h, ["echo", "ok"], { stdio: "pipe" }, ["-T", "-o", "ConnectTimeout=5"]);
       ok(`SSH to ${h} reachable`);
     } catch {
       console.error(`\x1b[31m✗\x1b[0m SSH to ${h} failed`);
@@ -159,10 +176,8 @@ async function cmdDoctor() {
 
   // 2. xcrun mcpbridge availability
   try {
-    const testCmd = h
-      ? `ssh -T -o ConnectTimeout=5 ${h} "xcrun mcpbridge --help 2>&1 | head -1"`
-      : `xcrun mcpbridge --help 2>&1 | head -1`;
-    execSync(testCmd, { stdio: "pipe" });
+    // `xcrun --find` exits non-zero when the tool is missing.
+    run(h, ["xcrun", "--find", "mcpbridge"], { stdio: "pipe" }, ["-T", "-o", "ConnectTimeout=5"]);
     ok("xcrun mcpbridge available");
   } catch {
     console.error("\x1b[31m✗\x1b[0m xcrun mcpbridge not found — Xcode 26.3+ required");
@@ -274,11 +289,17 @@ async function cmdCall() {
   const pos = positionalArgs();
   const toolName = pos[0];
   if (!toolName) die("Usage: xcmcp call <ToolName> [json-args]");
-  const rawArgs = pos[1] ? JSON.parse(pos[1]) : {};
+  let rawArgs: unknown = {};
+  if (pos[1]) {
+    try { rawArgs = JSON.parse(pos[1]); } catch (e) { die(`Invalid JSON arguments: ${(e as Error).message}`); }
+  }
+  if (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs)) {
+    die("Tool arguments must be a JSON object, e.g. '{\"tabIdentifier\":\"windowtab1\"}'");
+  }
   const client = new XcodeClient({ host: host() });
   await client.connect();
   try {
-    const result = await client.callTool(toolName, rawArgs);
+    const result = await client.callTool(toolName, rawArgs as Record<string, unknown>);
     console.log(JSON.stringify(result, null, 2));
   } finally {
     client.disconnect();
@@ -351,26 +372,23 @@ async function cmdTestSome() {
 
 async function cmdScreenshot() {
   const mode = (opt("mode") ?? "simulator") as "simulator" | "screen";
-  const out = opt("out") ?? `/tmp/xcode-screenshot-${Date.now()}.png`;
+  // Absolute path: can't be mistaken for an option or for scp's host:path.
+  const out = resolve(opt("out") ?? `/tmp/xcode-screenshot-${Date.now()}.png`);
   const h = host();
   const remoteTmp = `/tmp/xcmcp-shot-${Date.now()}.png`;
 
   console.log(`Capturing ${mode} screenshot${h ? ` from ${h}` : ""}…`);
   try {
     if (h) {
-      if (mode === "simulator") {
-        execSync(`ssh ${h} "xcrun simctl io booted screenshot '${remoteTmp}'"`, { stdio: "pipe" });
-      } else {
-        execSync(`ssh ${h} "screencapture -x '${remoteTmp}'"`, { stdio: "pipe" });
-      }
-      execSync(`scp -q "${h}:${remoteTmp}" "${out}"`, { stdio: "pipe" });
-      execSync(`ssh ${h} "rm -f '${remoteTmp}'"`, { stdio: "pipe" });
+      run(h, mode === "simulator"
+        ? ["xcrun", "simctl", "io", "booted", "screenshot", remoteTmp]
+        : ["screencapture", "-x", remoteTmp]);
+      execFileSync("scp", ["-q", `${h}:${remoteTmp}`, out], { stdio: "pipe" });
+      run(h, ["rm", "-f", remoteTmp]);
     } else {
-      if (mode === "simulator") {
-        execSync(`xcrun simctl io booted screenshot "${out}"`, { stdio: "pipe" });
-      } else {
-        execSync(`screencapture -x "${out}"`, { stdio: "pipe" });
-      }
+      run("", mode === "simulator"
+        ? ["xcrun", "simctl", "io", "booted", "screenshot", out]
+        : ["screencapture", "-x", out]);
     }
     ok(`Screenshot saved: ${out}`);
   } catch (e) {
@@ -452,35 +470,34 @@ async function cmdUi() {
   const pos = positionalArgs();
   const sub = pos[0];
   const h = host();
-  const ssh = (cmd: string) =>
-    h ? `ssh ${h} "${cmd}"` : cmd;
+  const sh = (argv: string[]) => run(h, argv, { stdio: "inherit" });
 
   switch (sub) {
     case "tap": {
       const x = pos[1], y = pos[2];
       if (!x || !y) die("Usage: xcmcp ui tap [--host <h>] <x> <y>");
-      execSync(ssh(`xcrun simctl io booted tap ${x} ${y}`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "io", "booted", "tap", x, y]);
       ok(`Tapped (${x}, ${y})`);
       break;
     }
     case "type": {
       const text = pos.slice(1).join(" ");
       if (!text) die("Usage: xcmcp ui type [--host <h>] <text>");
-      execSync(ssh(`xcrun simctl io booted type "${text.replace(/"/g, '\\"')}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "io", "booted", "type", text]);
       ok(`Typed: ${text}`);
       break;
     }
     case "swipe": {
       const [, x1, y1, x2, y2, dur] = pos;
       if (!x1 || !y1 || !x2 || !y2) die("Usage: xcmcp ui swipe [--host <h>] <x1> <y1> <x2> <y2> [duration-ms]");
-      execSync(ssh(`xcrun simctl io booted swipe ${x1} ${y1} ${x2} ${y2} ${dur ?? 300}`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "io", "booted", "swipe", x1, y1, x2, y2, dur ?? "300"]);
       ok(`Swiped (${x1},${y1}) → (${x2},${y2})`);
       break;
     }
     case "key": {
       const key = pos[1];
       if (!key) die("Usage: xcmcp ui key [--host <h>] <keycode>\n  36=Return, 51=Delete, 53=Escape, 123=Left, 124=Right, 125=Down, 126=Up");
-      execSync(ssh(`xcrun simctl io booted sendkey ${key}`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "io", "booted", "sendkey", key]);
       ok(`Key sent: ${key}`);
       break;
     }
@@ -492,34 +509,34 @@ async function cmdUi() {
     case "boot": {
       const device = pos[1];
       if (!device) die("Usage: xcmcp ui boot [--host <h>] <device-udid-or-name>");
-      execSync(ssh(`xcrun simctl boot "${device}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "boot", device]);
       ok(`Booted: ${device}`);
       break;
     }
     case "shutdown": {
       const device = pos[1] ?? "booted";
-      execSync(ssh(`xcrun simctl shutdown "${device}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "shutdown", device]);
       ok(`Shut down: ${device}`);
       break;
     }
     case "install": {
       const appPath = pos[1];
       if (!appPath) die("Usage: xcmcp ui install [--host <h>] <path-to.app>");
-      execSync(ssh(`xcrun simctl install booted "${appPath}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "install", "booted", appPath]);
       ok(`Installed: ${appPath}`);
       break;
     }
     case "launch": {
       const bundleId = pos[1];
       if (!bundleId) die("Usage: xcmcp ui launch [--host <h>] <bundle-id>");
-      execSync(ssh(`xcrun simctl launch booted "${bundleId}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "launch", "booted", bundleId]);
       ok(`Launched: ${bundleId}`);
       break;
     }
     case "terminate": {
       const bundleId = pos[1];
       if (!bundleId) die("Usage: xcmcp ui terminate [--host <h>] <bundle-id>");
-      execSync(ssh(`xcrun simctl terminate booted "${bundleId}"`), { stdio: "inherit" });
+      sh(["xcrun", "simctl", "terminate", "booted", bundleId]);
       ok(`Terminated: ${bundleId}`);
       break;
     }
@@ -533,9 +550,7 @@ async function cmdUi() {
       break;
     }
     case "list": {
-      const raw = h
-        ? execSync(`ssh ${h} "xcrun simctl list devices --json"`, { encoding: "utf8" })
-        : execSync(`xcrun simctl list devices --json`, { encoding: "utf8" });
+      const raw = run(h, ["xcrun", "simctl", "list", "devices", "--json"], { encoding: "utf8" }) as string;
       const data = JSON.parse(raw);
       const devs = Object.entries(data.devices as Record<string, unknown[]>)
         .flatMap(([runtime, devices]) =>
@@ -560,7 +575,7 @@ async function cmdUi() {
     }
     case "open": {
       // Open Simulator.app
-      execSync(ssh("open -a Simulator"), { stdio: "inherit" });
+      sh(["open", "-a", "Simulator"]);
       ok("Simulator.app opened");
       break;
     }

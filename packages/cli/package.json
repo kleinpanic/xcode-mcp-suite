@@ -4,8 +4,8 @@
   "description": "CLI for Xcode's MCP bridge — build, test, preview, REPL and more",
   "license": "MIT",
   "author": "kleinpanic",
-  "bin": { "xcmcp": "./dist/cli.js" },
-  "main": "./dist/cli.js",
+  "bin": { "xcmcp": "./dist/cli.mjs" },
+  "main": "./dist/cli.mjs",
   "files": ["dist"],
   "scripts": {
     "build": "tsup",

@@ -8,7 +8,6 @@
 import { XcodeClient, type XcodeClientOptions } from "./client.js";
 import { XcodeConnectionError } from "./types.js";
 import type {
-  XcodeWindow,
   XcodeReadResult,
   XcodeWriteResult,
   XcodeUpdateParams, XcodeUpdateResult,
@@ -181,8 +180,8 @@ export async function withXcodeSession<T>(
   fn: (session: XcodeSession) => Promise<T>,
 ): Promise<T> {
   const session = new XcodeSession(opts);
-  await session.connect();
   try {
+    await session.connect();
     return await fn(session);
   } finally {
     session.disconnect();

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { XcodeSession } from "../session.js";
+import { XcodeSession, withXcodeSession } from "../session.js";
 
 // ── Mock child_process.spawn ───────────────────────────────────────────────
 
-const mockStdin = { write: vi.fn(), end: vi.fn() };
+const mockStdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
 const mockStdout = { setEncoding: vi.fn(), on: vi.fn() };
 const mockStderr = { on: vi.fn() };
 const mockProc = {
@@ -34,15 +34,18 @@ function setupMock() {
     const msg = JSON.parse(line.trim());
     if (msg.method === "initialize") simulateResponse(msg.id, {});
     if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
-    if (msg.method === "tools/call" && msg.params?.name === "XcodeListWindows") {
+    // listWindows() probes BuildProject with a bogus tab; Xcode lists the real ones.
+    if (msg.method === "tools/call" && msg.params?.arguments?.tabIdentifier === "__probe__") {
       simulateResponse(msg.id, {
-        structuredContent: {
-          windows: [
-            { tabIdentifier: "windowtab1", workspacePath: "/Users/me/MyApp.xcodeproj" },
-            { tabIdentifier: "windowtab2", workspacePath: "/Users/me/Other.xcodeproj" },
-          ],
-        },
+        isError: true,
+        content: [{
+          type: "text",
+          text: "Error: Valid tabIdentifier required. Currently available:\n" +
+            "* tabIdentifier: windowtab1, workspacePath: /Users/me/MyApp.xcodeproj\n" +
+            "* tabIdentifier: windowtab2, workspacePath: /Users/me/Other.xcodeproj",
+        }],
       });
+      return;
     }
     if (msg.method === "tools/call" && msg.params?.name === "BuildProject") {
       simulateResponse(msg.id, {
@@ -87,10 +90,24 @@ describe("XcodeSession", () => {
 
     // Verify BuildProject was called with the correct tabIdentifier
     const calls = mockStdin.write.mock.calls as [string][];
-    const buildCall = calls.find(([c]) => c.includes("BuildProject"));
+    const buildCall = calls.find(([c]) => c.includes("BuildProject") && !c.includes("__probe__"));
     expect(buildCall).toBeDefined();
     const parsed = JSON.parse(buildCall![0]);
     expect(parsed.params.arguments.tabIdentifier).toBe("windowtab1");
     session.disconnect();
+  });
+
+  it("withXcodeSession disconnects when connect() fails", async () => {
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateResponse(msg.id, {});
+      if (msg.method === "tools/call") {
+        simulateResponse(msg.id, { isError: true, content: [{ type: "text", text: "no windows" }] });
+      }
+    });
+    const fn = vi.fn();
+    await expect(withXcodeSession({}, fn)).rejects.toThrow("No Xcode windows found");
+    expect(fn).not.toHaveBeenCalled();
+    expect(mockProc.kill).toHaveBeenCalled();
   });
 });

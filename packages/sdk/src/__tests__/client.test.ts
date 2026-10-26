@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { XcodeClient } from "../client.js";
-import { XcodeConnectionError } from "../types.js";
+import { spawn } from "node:child_process";
+import { XcodeConnectionError, XcodeToolError } from "../types.js";
 
 // ── Mock child_process.spawn ───────────────────────────────────────────────
 
-const mockStdin = { write: vi.fn(), end: vi.fn() };
+const mockStdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
 const mockStdout = { setEncoding: vi.fn(), on: vi.fn() };
 const mockStderr = { on: vi.fn() };
 const mockProc = {
@@ -36,6 +37,24 @@ function simulateError(id: number, message: string) {
   const handler = getStdoutHandler();
   handler?.(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -1, message } }) + "\n");
 }
+
+function procHandler(event: string): ((arg: unknown) => void) | undefined {
+  const calls = mockProc.on.mock.calls as [string, (a: unknown) => void][];
+  return calls.find(([ev]) => ev === event)?.[1];
+}
+
+/** Answer the handshake, then hand tools/call messages to `onTool`. */
+function mockBridge(onTool: (msg: { id: number; params: { name: string; arguments: Record<string, unknown> } }) => void) {
+  mockStdin.write.mockImplementation((line: string) => {
+    const msg = JSON.parse(line.trim());
+    if (msg.method === "initialize") simulateResponse(msg.id, {});
+    if (msg.method === "tools/call") onTool(msg);
+  });
+}
+
+const WINDOW_LIST_TEXT =
+  "Error: Valid tabIdentifier required. Currently available:\n" +
+  "* tabIdentifier: windowtab1, workspacePath: /Users/me/MyApp.xcodeproj";
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
@@ -73,7 +92,7 @@ describe("XcodeClient", () => {
       const msg = JSON.parse(line.trim());
       if (msg.method === "initialize") simulateResponse(msg.id, {});
       if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
-      if (msg.method === "tools/call" && msg.params?.name === "XcodeListWindows") {
+      if (msg.method === "tools/call" && msg.params?.name === "BuildProject") {
         simulateResponse(msg.id, {
           structuredContent: {
             windows: [{ tabIdentifier: "windowtab1", workspacePath: "/Users/me/MyApp.xcodeproj" }],
@@ -96,19 +115,14 @@ describe("XcodeClient", () => {
       const msg = JSON.parse(line.trim());
       if (msg.method === "initialize") simulateResponse(msg.id, {});
       if (msg.method === "notifications/initialized") simulateResponse(msg.id, {});
-      if (msg.method === "tools/call" && msg.params?.name === "XcodeListWindows") {
-        simulateResponse(msg.id, {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ message: "* tabIdentifier: windowtab1, workspacePath: /path" }),
-          }],
-        });
+      if (msg.method === "tools/call" && msg.params?.name === "BuildProject") {
+        simulateResponse(msg.id, { isError: true, content: [{ type: "text", text: WINDOW_LIST_TEXT }] });
       }
     });
 
     await client.connect();
     const result = await client.listWindows();
-    expect(result.message).toContain("tabIdentifier");
+    expect(result.windows).toEqual([{ tabIdentifier: "windowtab1", workspacePath: "/Users/me/MyApp.xcodeproj" }]);
     client.disconnect();
   });
 
@@ -143,7 +157,7 @@ describe("XcodeClient", () => {
     });
 
     await client.connect();
-    await expect(client.listWindows()).rejects.toThrow("Xcode not running");
+    await expect(client.readFile({ tabIdentifier: "t", filePath: "a" })).rejects.toThrow("Xcode not running");
     client.disconnect();
   });
 
@@ -282,6 +296,94 @@ describe("XcodeClient", () => {
       destinationPath: "Sources/new.swift",
     });
     expect(result.success).toBe(true);
+    client.disconnect();
+  });
+
+  // ── Regression tests ────────────────────────────────────────────────────
+
+  it("listWindows parses the window list from a JSON-RPC error response", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockBridge((msg) => simulateError(msg.id, WINDOW_LIST_TEXT));
+    await client.connect();
+    const result = await client.listWindows();
+    expect(result.windows?.[0]?.tabIdentifier).toBe("windowtab1");
+    client.disconnect();
+  });
+
+  it("listWindows does not swallow a tool timeout", async () => {
+    const client = new XcodeClient({ timeout: 50 });
+    mockBridge(() => { /* never answers */ });
+    await client.connect();
+    await expect(client.listWindows()).rejects.toThrow("Timeout calling tools/call");
+    client.disconnect();
+  });
+
+  it("rejects isError tool results instead of returning them as success", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockBridge((msg) => simulateResponse(msg.id, {
+      isError: true,
+      content: [{ type: "text", text: "Build service unavailable" }],
+    }));
+    await client.connect();
+    const p = client.buildProject({ tabIdentifier: "tab1" });
+    await expect(p).rejects.toBeInstanceOf(XcodeToolError);
+    await expect(p).rejects.toThrow("Build service unavailable");
+    client.disconnect();
+  });
+
+  it("validates tool arguments before sending", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockBridge((msg) => simulateResponse(msg.id, {}));
+    await client.connect();
+    mockStdin.write.mockClear();
+    await expect(client.callTool("XcodeRead", [] as unknown as Record<string, unknown>)).rejects.toThrow("must be a JSON object");
+    await expect(client.callTool("XcodeRead", null as unknown as Record<string, unknown>)).rejects.toThrow("must be a JSON object");
+    await expect(client.callTool("", {})).rejects.toThrow("non-empty string");
+    expect(mockStdin.write).not.toHaveBeenCalled();
+    client.disconnect();
+  });
+
+  it("refuses a host that ssh would parse as an option", async () => {
+    const client = new XcodeClient({ host: "-oProxyCommand=touch /tmp/pwned" });
+    await expect(client.connect()).rejects.toThrow(XcodeConnectionError);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("rejects connect() when the bridge fails to spawn (ENOENT)", async () => {
+    const client = new XcodeClient({ timeout: 5_000 });
+    mockStdin.write.mockImplementation(() => {
+      procHandler("error")?.(Object.assign(new Error("spawn xcrun ENOENT"), { code: "ENOENT" }));
+    });
+    await expect(client.connect()).rejects.toThrow("Failed to start xcrun: spawn xcrun ENOENT");
+    expect(client.connected).toBe(false);
+  });
+
+  it("cleans up and allows reconnect when the handshake fails", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method === "initialize") simulateError(msg.id, "unsupported protocol");
+    });
+    await expect(client.connect()).rejects.toThrow("unsupported protocol");
+    expect(mockProc.kill).toHaveBeenCalled();
+    expect(client.connected).toBe(false);
+  });
+
+  it("reports disconnected after the bridge exits", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockBridge((msg) => simulateResponse(msg.id, {}));
+    await client.connect();
+    procHandler("exit")?.(1);
+    expect(client.connected).toBe(false);
+    await expect(client.readFile({ tabIdentifier: "t", filePath: "a" })).rejects.toThrow(XcodeConnectionError);
+  });
+
+  it("drops timed-out requests from the pending map", async () => {
+    const client = new XcodeClient({ timeout: 50 });
+    mockBridge(() => { /* never answers */ });
+    await client.connect();
+    await expect(client.readFile({ tabIdentifier: "t", filePath: "a" })).rejects.toThrow("Timeout");
+    expect((Reflect.get(client, "pending") as Map<number, unknown>).size).toBe(0);
     client.disconnect();
   });
 });
