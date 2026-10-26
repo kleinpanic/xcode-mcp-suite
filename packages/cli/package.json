@@ -15,7 +15,7 @@
     "@kleinpanic/xcode-mcp-sdk": "workspace:*"
   },
   "devDependencies": {
-    "tsup": "*",
+    "tsup": "^8.5.1",
     "typescript": "*",
     "@types/node": "*"
   }
