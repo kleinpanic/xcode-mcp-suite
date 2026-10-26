@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { XcodeClient } from "../client.js";
 import { spawn } from "node:child_process";
-import { XcodeConnectionError, XcodeToolError } from "../types.js";
+import { XcodeBuildError, XcodeConnectionError, XcodeToolError } from "../types.js";
 
 // ── Mock child_process.spawn ───────────────────────────────────────────────
 
@@ -328,6 +328,23 @@ describe("XcodeClient", () => {
     const p = client.buildProject({ tabIdentifier: "tab1" });
     await expect(p).rejects.toBeInstanceOf(XcodeToolError);
     await expect(p).rejects.toThrow("Build service unavailable");
+    client.disconnect();
+  });
+
+  it("keeps structured build errors when an isError result has structuredContent", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    mockBridge((msg) => simulateResponse(msg.id, {
+      isError: true,
+      structuredContent: {
+        buildResult: "failed",
+        errors: [{ classification: "error", message: "Cannot find 'x' in scope", filePath: "A.swift", lineNumber: 3 }],
+      },
+      content: [{ type: "text", text: "Build failed" }],
+    }));
+    await client.connect();
+    const err = await client.buildProject({ tabIdentifier: "tab1" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(XcodeBuildError);
+    expect((err as XcodeBuildError).errors[0]?.message).toBe("Cannot find 'x' in scope");
     client.disconnect();
   });
 

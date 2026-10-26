@@ -233,12 +233,14 @@ export class XcodeClient extends EventEmitter {
       isError?: boolean;
     };
     const text = raw.content?.find((c) => c.type === "text")?.text;
+    // Prefer structuredContent (Xcode 26.3 RC2+). Kept even when isError is set:
+    // a failed build/test run still carries its typed result (errors, counts),
+    // which buildProject() and the CLI inspect.
+    if (raw.structuredContent) return raw.structuredContent as R;
     // Tool-level failures are reported in-band, not as JSON-RPC errors.
     if (raw.isError) {
       throw new XcodeToolError(text ?? `${name} failed`, name, raw);
     }
-    // Prefer structuredContent (Xcode 26.3 RC2+)
-    if (raw.structuredContent) return raw.structuredContent as R;
     // Fall back to parsing content[0].text
     if (text === undefined) return {} as R;
     try {
