@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -47,7 +55,7 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      - run: pnpm lint --max-warnings 0
 
   man-page:
     name: Validate man page
@@ -55,6 +63,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install groff
-        run: sudo apt-get install -y groff
+        # Refresh the index first: the runner image's cached one can point at
+        # package versions the mirror no longer serves (404).
+        run: sudo apt-get update && sudo apt-get install -y groff
       - name: Validate man page
         run: man -l man/xcmcp.1 > /dev/null
