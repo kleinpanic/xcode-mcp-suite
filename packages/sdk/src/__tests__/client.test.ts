@@ -386,6 +386,26 @@ describe("XcodeClient", () => {
     expect(client.connected).toBe(false);
   });
 
+  it("a killed bridge exiting late does not fail the reconnect", async () => {
+    const staleProc = { ...mockProc, on: vi.fn() };
+    vi.mocked(spawn).mockReturnValueOnce(staleProc as unknown as ReturnType<typeof spawn>);
+    const client = new XcodeClient({ timeout: 500 });
+    let attempt = 0;
+    mockStdin.write.mockImplementation((line: string) => {
+      const msg = JSON.parse(line.trim());
+      if (msg.method !== "initialize") return;
+      if (attempt++ === 0) return simulateError(msg.id, "unsupported protocol");
+      // The first bridge's 'exit' arrives while the new handshake is in flight.
+      const calls = staleProc.on.mock.calls as [string, (a: unknown) => void][];
+      calls.find(([ev]) => ev === "exit")?.[1](null);
+      simulateResponse(msg.id, {});
+    });
+    await expect(client.connect()).rejects.toThrow("unsupported protocol");
+    await expect(client.connect()).resolves.toBeUndefined();
+    expect(client.connected).toBe(true);
+    client.disconnect();
+  });
+
   it("reports disconnected after the bridge exits", async () => {
     const client = new XcodeClient({ timeout: 500 });
     mockBridge((msg) => simulateResponse(msg.id, {}));

@@ -114,8 +114,11 @@ export class XcodeClient extends EventEmitter {
 
     // Without these listeners a missing binary (ENOENT) or a write to a dead
     // bridge (EPIPE) is an unhandled 'error' event and crashes the host process.
+    // Events from a bridge we already replaced (disconnect() then connect())
+    // must not reject the new bridge's requests.
     proc.on("error", (err) => {
-      if (this.proc === proc) this.proc = null;
+      if (this.proc !== proc) return;
+      this.proc = null;
       this._rejectAll(new XcodeConnectionError(`Failed to start ${cmd}: ${err.message}`, err));
     });
     proc.stdin.on("error", () => {
@@ -127,8 +130,9 @@ export class XcodeClient extends EventEmitter {
       this.emit("stderr", chunk.toString()),
     );
     this.proc.on("exit", (code) => {
-      if (this.proc === proc) this.proc = null;
       this.emit("exit", code);
+      if (this.proc !== proc) return;
+      this.proc = null;
       this._rejectAll(new XcodeConnectionError(`xcrun mcpbridge exited with code ${code}`));
     });
 
