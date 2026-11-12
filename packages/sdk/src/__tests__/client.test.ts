@@ -126,6 +126,18 @@ describe("XcodeClient", () => {
     client.disconnect();
   });
 
+  it("listWindows keeps spaces inside a workspacePath", async () => {
+    const client = new XcodeClient({ timeout: 500 });
+    const text =
+      "Error: Valid tabIdentifier required. Currently available:\n" +
+      "* tabIdentifier: windowtab1, workspacePath: /Users/collins/codeWS/Swift/My App/MyApp.xcodeproj";
+    mockBridge((msg) => simulateError(msg.id, text));
+    await client.connect();
+    const result = await client.listWindows();
+    expect(result.windows?.[0]?.workspacePath).toBe("/Users/collins/codeWS/Swift/My App/MyApp.xcodeproj");
+    client.disconnect();
+  });
+
   it("readFile sends XcodeRead tool call", async () => {
     const client = new XcodeClient({ timeout: 500 });
 
