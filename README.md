@@ -60,10 +60,10 @@ import { withXcodeSession } from "@kleinpanic/xcode-mcp-sdk";
 await withXcodeSession({ host: "collins-pro" }, async (session) => {
   // tabIdentifier is managed automatically
   const result = await session.buildProject();
-  console.log(`Build: ${result.success ? "✓" : "✗"}`);
+  console.log(`Build: ${result.buildResult}`);
 
   const tests = await session.runAllTests();
-  console.log(`Tests: ${tests.passed} passed, ${tests.failed} failed`);
+  console.log(`Tests: ${tests.counts.passed} passed, ${tests.counts.failed} failed`);
 });
 ```
 
@@ -109,21 +109,22 @@ const client = new XcodeClient({ host: "collins-pro" });
 await client.connect();
 
 // Always get tabIdentifier first
-const { windows } = await client.listWindows();
-const tabId = windows[0]["tabIdentifier"];
+const windows = await client.listWindows();
+const tabId = windows.windows?.[0]?.tabIdentifier ?? "windowtab1";
 
 // Build
 const build = await client.buildProject({ "tabIdentifier": tabId });
 
 // Swift REPL
-const repl = await client.runSwiftREPL({
+const repl = await client.executeSnippet({
   "tabIdentifier": tabId,
-  code: 'let arr = [1,2,3].map { $0 * 2 }; print(arr)',
+  codeSnippet: 'let arr = [1,2,3].map { $0 * 2 }; print(arr)',
+  sourceFilePath: "Sources/App/main.swift",
 });
-console.log(repl.output); // [2, 4, 6]
+process.stdout.write(repl.executionResults ?? ""); // [2, 4, 6]
 
 // SwiftUI preview → base64 PNG
-const preview = await client.getSwiftUIPreview({
+const preview = await client.renderPreview({
   "tabIdentifier": tabId,
   filePath: "Sources/Views/ContentView.swift",
 });
@@ -144,9 +145,9 @@ const session = new XcodeSession({
 await session.connect();
 
 // No tabIdentifier needed — managed automatically
-const result = await session.buildProject({ scheme: "MyApp" });
-const refs = await session.getReferencesForSymbol({ symbol: "ContentView" });
-const info = await session.getSymbolInfo({ symbol: "body" });
+const result = await session.buildProject();
+const refs = await session.grep("ContentView");
+const info = await session.searchDocumentation("SwiftUI body");
 
 session.disconnect();
 ```
@@ -160,8 +161,8 @@ try {
   await session.buildProject();
 } catch (e) {
   if (e instanceof XcodeBuildError) {
-    for (const issue of e.issues) {
-      console.error(`${issue.file}:${issue.line} — ${issue.message}`);
+    for (const issue of e.errors) {
+      console.error(`${issue.filePath ?? "?"}:${issue.lineNumber ?? "?"} — ${issue.message}`);
     }
   } else if (e instanceof XcodeConnectionError) {
     console.error("Xcode not reachable — is it running?");
