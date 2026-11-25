@@ -1,8 +1,6 @@
 # xcode-mcp-suite
 
 [![CI](https://github.com/kleinpanic/xcode-mcp-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/kleinpanic/xcode-mcp-suite/actions/workflows/ci.yml)
-[![npm: SDK](https://img.shields.io/npm/v/@kleinpanic/xcode-mcp-sdk?label=sdk)](https://www.npmjs.com/package/@kleinpanic/xcode-mcp-sdk)
-[![npm: CLI](https://img.shields.io/npm/v/@kleinpanic/xcmcp?label=cli)](https://www.npmjs.com/package/@kleinpanic/xcmcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **SDK, CLI, and MCP proxy for Xcode's agentic coding bridge (`xcrun mcpbridge`).**
@@ -34,7 +32,11 @@ This suite makes those tools easy to use from any agent or script:
 ### CLI
 
 ```bash
-npm install -g @kleinpanic/xcmcp
+git clone https://github.com/kleinpanic/xcode-mcp-suite.git
+cd xcode-mcp-suite
+pnpm install
+pnpm build                                    # tsup -> packages/*/dist
+alias xcmcp="node $PWD/packages/cli/dist/cli.mjs"   # packages/cli/package.json "bin"
 
 # Check everything works
 xcmcp doctor --host collins-pro
@@ -51,7 +53,8 @@ xcmcp screenshot --host collins-pro --mode simulator --out /tmp/ui.png
 ### SDK
 
 ```bash
-npm install @kleinpanic/xcode-mcp-sdk
+# Build this repo first (pnpm install && pnpm build), then add the built folder as a dependency:
+pnpm add file:../xcode-mcp-suite/packages/sdk
 ```
 
 ```typescript
